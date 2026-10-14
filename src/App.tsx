@@ -29,6 +29,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('multitrack');
   const [isPiModalOpen, setIsPiModalOpen] = useState<boolean>(false);
   const [modalInitialTab, setModalInitialTab] = useState<'export' | 'import' | 'link' | 'setup'>('export');
+  const [dawModeActive, setDawModeActive] = useState<boolean>(false);
 
   // Ableton Link State
   const [linkState, setLinkState] = useState<LinkState>(linkSync.state);
@@ -38,11 +39,41 @@ export default function App() {
   const [midiOutputs, setMidiOutputs] = useState<MidiDeviceOption[]>([]);
   const [selectedMidiOutputId, setSelectedMidiOutputId] = useState<string>('');
 
-  // Ref to hold latest tracks for audio lookahead callback
+  // Refs to hold latest state for MIDI and audio callbacks
   const tracksRef = useRef<TrackData[]>(tracks);
+  const activePageRef = useRef<number>(activePage);
+  const bpmRef = useRef<number>(bpm);
+  const runningRef = useRef<boolean>(running);
+  const activeTrackIdRef = useRef<number>(activeTrackId);
+
   useEffect(() => {
     tracksRef.current = tracks;
   }, [tracks]);
+
+  useEffect(() => {
+    activePageRef.current = activePage;
+  }, [activePage]);
+
+  useEffect(() => {
+    bpmRef.current = bpm;
+  }, [bpm]);
+
+  useEffect(() => {
+    runningRef.current = running;
+  }, [running]);
+
+  useEffect(() => {
+    activeTrackIdRef.current = activeTrackId;
+  }, [activeTrackId]);
+
+  const currentStepRef = useRef(0);
+  const prevStepRef = useRef(0);
+  const toggleStepRef = useRef<(trackId: number, stepIdx: number) => void>(() => {});
+  const togglePlayRef = useRef<() => void>(() => {});
+  const setActivePageRef = useRef<(page: number) => void>(() => {});
+  const setActiveTrackIdRef = useRef<(id: number) => void>(() => {});
+  const toggleMuteAllRef = useRef<() => void>(() => {});
+  const handleBpmChangeRef = useRef<(bpm: number) => void>(() => {});
 
   // Subscribe to Ableton Link real-time updates
   useEffect(() => {
@@ -58,6 +89,59 @@ export default function App() {
     };
   }, [bpm]);
 
+  // Synchronize Launchpad X Hardware LEDs on track edit, mute/solo, page change, or transport toggle
+  useEffect(() => {
+    if (midiSupported) {
+      midiManager.renderLaunchpadGrid(
+        tracks,
+        currentStepRef.current,
+        running,
+        activePage,
+        activeTrackId
+      );
+    }
+  }, [tracks, running, activePage, activeTrackId, midiSupported, dawModeActive]);
+
+  // Dedicated scene button dispatcher (supports all physical Launchpad X firmware layouts)
+  const handleSceneButtonAction = useCallback((sceneIndex: number) => {
+    if (sceneIndex === 0) {
+      setActivePageRef.current(0);
+    } else if (sceneIndex === 1) {
+      setActivePageRef.current(1);
+    } else if (sceneIndex === 2) {
+      setActiveTrackIdRef.current(0);
+    } else if (sceneIndex === 3) {
+      setActiveTrackIdRef.current(4);
+    } else if (sceneIndex === 4) {
+      setTracks((prev) => {
+        const anyMuted = prev.slice(0, 4).some((t) => t.mute);
+        return prev.map((t) => (t.id < 4 ? { ...t, mute: !anyMuted } : t));
+      });
+    } else if (sceneIndex === 5) {
+      setTracks((prev) => {
+        const anyMuted = prev.slice(4, 8).some((t) => t.mute);
+        return prev.map((t) => (t.id >= 4 ? { ...t, mute: !anyMuted } : t));
+      });
+    } else if (sceneIndex === 6) {
+      toggleMuteAllRef.current();
+    } else if (sceneIndex === 7) {
+      togglePlayRef.current();
+    }
+  }, []);
+
+  // Re-assert DAW Mode Handshake and immediately refresh all pad lights
+  const handleSessionModeReassert = useCallback(() => {
+    midiManager.enableDawMode();
+    setDawModeActive(true);
+    midiManager.renderLaunchpadGrid(
+      tracksRef.current,
+      currentStepRef.current,
+      runningRef.current,
+      activePageRef.current,
+      activeTrackIdRef.current
+    );
+  }, []);
+
   // Initialize Audio & MIDI
   useEffect(() => {
     synth.init();
@@ -65,41 +149,132 @@ export default function App() {
     synth.setSwing(swing);
     synth.setMasterVolume(volume);
 
-    // Audio clock step sync callback
+    // High-resolution audio clock step trigger:
+    // Uses ultra-fast delta playhead tick (only 16 pad updates, never locks USB buffers)
     synth.onStepTrigger = (stepIndex: number) => {
+      const prev = currentStepRef.current;
+      currentStepRef.current = stepIndex;
+      prevStepRef.current = prev;
       setCurrentStep(stepIndex);
+
+      midiManager.updatePlayheadTick(
+        tracksRef.current,
+        prev,
+        stepIndex,
+        runningRef.current,
+        activePageRef.current
+      );
     };
 
-    // Forward synthesized triggers to Web MIDI if active
+    // Forward synthesized triggers to Web MIDI (external synths / DAW)
     synth.onMidiEmit = (channel, pitch, velocity, gateSec) => {
       midiManager.sendNote(channel, pitch, velocity, gateSec);
     };
 
     // Check & Initialize Web MIDI
     const setupMidi = async () => {
+      midiManager.onDawModeChanged = (active) => {
+        setDawModeActive(active);
+        if (active) {
+          midiManager.renderLaunchpadGrid(
+            tracksRef.current,
+            currentStepRef.current,
+            runningRef.current,
+            activePageRef.current,
+            activeTrackIdRef.current
+          );
+        }
+      };
+
+      midiManager.onRequestFullRefresh = () => {
+        midiManager.renderLaunchpadGrid(
+          tracksRef.current,
+          currentStepRef.current,
+          runningRef.current,
+          activePageRef.current,
+          activeTrackIdRef.current
+        );
+      };
+
       const supported = await midiManager.init();
       setMidiSupported(supported);
       if (supported) {
         setMidiOutputs(midiManager.availableOutputs);
         setSelectedMidiOutputId(midiManager.selectedOutputId);
+        setDawModeActive(true);
 
-        // Listen for hardware Launchpad X pad presses
+        // Render initial lights to physical Launchpad X
+        midiManager.renderLaunchpadGrid(
+          tracksRef.current,
+          0,
+          runningRef.current,
+          activePageRef.current,
+          activeTrackIdRef.current
+        );
+
+        // Listen for hardware Launchpad X pad presses & right scene buttons
         midiManager.onPadNoteReceived = (note, velocity) => {
           if (velocity > 0) {
             const row = Math.floor(note / 10);
             const col = note % 10;
+
+            // 8x8 Grid Pads (Rows 1..8, Cols 1..8)
             if (row >= 1 && row <= 8 && col >= 1 && col <= 8) {
               const trackIdx = 8 - row;
-              const stepIdx = activePage * 8 + (col - 1);
-              toggleStep(trackIdx, stepIdx);
+              const stepIdx = activePageRef.current * 8 + (col - 1);
+              toggleStepRef.current(trackIdx, stepIdx);
+              return;
             }
+
+            // Right-Hand Scene Buttons (Col 9 or Notes 89, 79, 69, 59, 49, 39, 29, 19)
+            if (col === 9 && row >= 1 && row <= 8) {
+              handleSceneButtonAction(8 - row);
+              return;
+            }
+
+            if (note === 89) handleSceneButtonAction(0);
+            else if (note === 79) handleSceneButtonAction(1);
+            else if (note === 69) handleSceneButtonAction(2);
+            else if (note === 59) handleSceneButtonAction(3);
+            else if (note === 49) handleSceneButtonAction(4);
+            else if (note === 39) handleSceneButtonAction(5);
+            else if (note === 29) handleSceneButtonAction(6);
+            else if (note === 19) handleSceneButtonAction(7);
           }
         };
 
-        // Listen for Launchpad CC buttons (Record button CC 98 toggles transport)
+        // Listen for Launchpad CC buttons (Top Row CC 91-98 and Scene CC buttons)
         midiManager.onControlChangeReceived = (cc, val) => {
-          if (cc === 98 && val > 0) {
-            togglePlay();
+          if (val > 0) {
+            if (cc === 98) {
+              // Record / Play transport button
+              togglePlayRef.current();
+            } else if (cc === 95) {
+              // Physical SESSION / MIXER button pressed:
+              // Re-affirm DAW Programmer Mode & refresh pad LEDs!
+              handleSessionModeReassert();
+            } else if (cc === 93) {
+              // Left arrow -> Page 1
+              setActivePageRef.current(0);
+            } else if (cc === 94) {
+              // Right arrow -> Page 2
+              setActivePageRef.current(1);
+            } else if (cc === 91) {
+              // Up arrow -> BPM +2
+              handleBpmChangeRef.current(bpmRef.current + 2);
+            } else if (cc === 92) {
+              // Down arrow -> BPM -2
+              handleBpmChangeRef.current(bpmRef.current - 2);
+            }
+            // Scene buttons transmitted as CCs (Session mode)
+            else if (cc === 89) handleSceneButtonAction(0);
+            else if (cc === 79) handleSceneButtonAction(1);
+            else if (cc === 69) handleSceneButtonAction(2);
+            else if (cc === 59) handleSceneButtonAction(3);
+            else if (cc === 49) handleSceneButtonAction(4);
+            else if (cc === 39) handleSceneButtonAction(5);
+            else if (cc === 29) handleSceneButtonAction(6);
+            else if (cc === 19) handleSceneButtonAction(7);
           }
         };
       }
@@ -109,6 +284,16 @@ export default function App() {
     return () => {
       synth.stop();
     };
+  }, [handleSceneButtonAction, handleSessionModeReassert]);
+
+  // Toggle Launchpad X DAW Mode Handshake
+  const toggleDawMode = useCallback(() => {
+    if (midiManager.dawModeActive) {
+      midiManager.disableDawMode();
+    } else {
+      midiManager.enableDawMode();
+    }
+    setDawModeActive(midiManager.dawModeActive);
   }, []);
 
   // Update Synth BPM (also sync to Ableton Link)
@@ -135,13 +320,15 @@ export default function App() {
     setRunning((prev) => {
       const nextRunning = !prev;
       if (nextRunning) {
-        synth.start(tracksRef.current, currentStep);
+        synth.start(tracksRef.current, currentStepRef.current);
       } else {
         synth.stop();
       }
       return nextRunning;
     });
-  }, [currentStep]);
+  }, []);
+
+
 
   // Toggle Step Active/Inactive
   const toggleStep = useCallback((trackId: number, stepIdx: number) => {
@@ -261,6 +448,14 @@ export default function App() {
     });
   }, []);
 
+  // Synchronize ref callbacks for hardware MIDI dispatch
+  toggleStepRef.current = toggleStep;
+  togglePlayRef.current = togglePlay;
+  setActivePageRef.current = setActivePage;
+  setActiveTrackIdRef.current = setActiveTrackId;
+  toggleMuteAllRef.current = toggleMuteAll;
+  handleBpmChangeRef.current = handleBpmChange;
+
   // Import Tracks from Pi JSON
   const handleImportTracks = useCallback((importedTracks: TrackData[], importedBpm: number) => {
     setTracks(importedTracks);
@@ -354,6 +549,8 @@ export default function App() {
             onAuditionTrack={auditionTrack}
             onClearTrack={clearTrack}
             onToggleMuteAll={toggleMuteAll}
+            dawModeActive={dawModeActive}
+            onToggleDawMode={toggleDawMode}
           />
         </div>
 

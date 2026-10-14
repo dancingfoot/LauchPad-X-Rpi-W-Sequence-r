@@ -3,6 +3,7 @@ import { TrackData, ViewMode } from '../../types/sequencer';
 import { TopControls } from './TopControls';
 import { PadGrid } from './PadGrid';
 import { SceneButtons } from './SceneButtons';
+import { Grid3X3, Music, Sparkles } from 'lucide-react';
 
 interface ChassisProps {
   tracks: TrackData[];
@@ -23,6 +24,8 @@ interface ChassisProps {
   onAuditionTrack: (track: TrackData, pitch?: number) => void;
   onClearTrack: (id: number) => void;
   onToggleMuteAll: () => void;
+  dawModeActive: boolean;
+  onToggleDawMode: () => void;
 }
 
 export const Chassis: React.FC<ChassisProps> = ({
@@ -44,77 +47,130 @@ export const Chassis: React.FC<ChassisProps> = ({
   onAuditionTrack,
   onClearTrack,
   onToggleMuteAll,
+  dawModeActive,
+  onToggleDawMode,
 }) => {
   return (
-    <div className="relative inline-block p-6 rounded-[28px] bg-[#12141a] border-4 border-[#0c0d12] chassis-bevel shadow-2xl select-none max-w-full">
-      {/* Top Brand Debossing */}
-      <div className="flex items-center justify-between px-2 mb-3 text-[11px] font-bold tracking-widest text-slate-500 uppercase">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400 font-extrabold tracking-wider">NOVATION</span>
-          <span className="text-slate-600">·</span>
-          <span className="text-slate-400 font-medium">LAUNCHPAD X</span>
-        </div>
-        <div className="text-[10px] font-mono text-slate-600 tracking-tight">
-          PROGRAMMER MODE · USB MIDI
-        </div>
+    <div className="flex flex-col items-center gap-3">
+      {/* Sequencer View Mode Switcher (Independent of hardware mode buttons) */}
+      <div className="flex items-center gap-1.5 p-1 bg-[#12151d] rounded-xl border border-[#202534] shadow-md">
+        <button
+          onClick={() => setViewMode('multitrack')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+            viewMode === 'multitrack'
+              ? 'bg-[#00e5ff] text-black shadow-md'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Grid3X3 className="w-3.5 h-3.5" />
+          <span>8-Track Grid</span>
+        </button>
+
+        <button
+          onClick={() => setViewMode('singletrack')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+            viewMode === 'singletrack'
+              ? 'bg-[#ffd000] text-black shadow-md'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Music className="w-3.5 h-3.5" />
+          <span>64-Step Melodic</span>
+        </button>
+
+        <button
+          onClick={() => setViewMode('euclidean')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+            viewMode === 'euclidean'
+              ? 'bg-[#d500f9] text-white shadow-md'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Euclidean Engine</span>
+        </button>
       </div>
 
-      {/* Top Oval CC Controls */}
-      <TopControls
-        viewMode={viewMode}
-        setViewMode={setViewMode}
-        running={running}
-        onTogglePlay={onTogglePlay}
-        bpm={bpm}
-        onBpmChange={onBpmChange}
-        activePage={activePage}
-        setActivePage={setActivePage}
-      />
+      {/* Physical Launchpad X Chassis */}
+      <div className="relative inline-block p-6 rounded-[28px] bg-[#12141a] border-4 border-[#0c0d12] chassis-bevel shadow-2xl select-none max-w-full">
+        {/* Top Brand Debossing */}
+        <div className="flex items-center justify-between px-2 mb-3 text-[11px] font-bold tracking-widest text-slate-500 uppercase">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400 font-extrabold tracking-wider">NOVATION</span>
+            <span className="text-slate-600">·</span>
+            <span className="text-slate-400 font-medium">LAUNCHPAD X</span>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-mono tracking-tight">
+            <span className={dawModeActive ? 'text-cyan-400 font-bold' : 'text-slate-600'}>
+              {dawModeActive ? '● DAW / PROGRAMMER MODE' : '○ STANDALONE MODE'}
+            </span>
+            <button
+              onClick={onToggleDawMode}
+              title="Force send DAW Mode Handshake and Refresh All LED Lights"
+              className="px-2 py-0.5 bg-[#1f2533] hover:bg-[#2c3447] text-cyan-300 rounded text-[9px] font-bold border border-[#2d374d] active:scale-95 transition-all"
+            >
+              RESYNC LIGHTS
+            </button>
+          </div>
+        </div>
 
-      {/* Main Surface: 8x8 Silicone Matrix + Right Scene Buttons */}
-      <div className="flex gap-3 bg-[#0a0b0e] p-3 rounded-2xl border border-[#1e222d] shadow-inner">
-        {/* 8x8 Pad Grid */}
-        <div className="flex-1">
-          <PadGrid
-            tracks={tracks}
-            currentStep={currentStep}
-            running={running}
+        {/* Top Oval CC Controls */}
+        <TopControls
+          running={running}
+          onTogglePlay={onTogglePlay}
+          bpm={bpm}
+          onBpmChange={onBpmChange}
+          activePage={activePage}
+          setActivePage={setActivePage}
+          dawModeActive={dawModeActive}
+          onToggleDawMode={onToggleDawMode}
+        />
+
+        {/* Main Surface: 8x8 Silicone Matrix + Right Scene Buttons */}
+        <div className="flex gap-3 bg-[#0a0b0e] p-3 rounded-2xl border border-[#1e222d] shadow-inner">
+          {/* 8x8 Pad Grid */}
+          <div className="flex-1">
+            <PadGrid
+              tracks={tracks}
+              currentStep={currentStep}
+              running={running}
+              activePage={activePage}
+              viewMode={viewMode}
+              activeTrackId={activeTrackId}
+              selectedStepIdx={selectedStepIdx}
+              onToggleStep={onToggleStep}
+              onSelectStep={onSelectStep}
+              onAuditionTrack={onAuditionTrack}
+            />
+          </div>
+
+          {/* Right Scene Launch Column */}
+          <SceneButtons
             activePage={activePage}
-            viewMode={viewMode}
+            setActivePage={setActivePage}
             activeTrackId={activeTrackId}
-            selectedStepIdx={selectedStepIdx}
-            onToggleStep={onToggleStep}
-            onSelectStep={onSelectStep}
-            onAuditionTrack={onAuditionTrack}
+            setActiveTrackId={setActiveTrackId}
+            onClearTrack={onClearTrack}
+            onToggleMuteAll={onToggleMuteAll}
           />
         </div>
 
-        {/* Right Scene Launch Column */}
-        <SceneButtons
-          activePage={activePage}
-          setActivePage={setActivePage}
-          activeTrackId={activeTrackId}
-          setActiveTrackId={setActiveTrackId}
-          onClearTrack={onClearTrack}
-          onToggleMuteAll={onToggleMuteAll}
-        />
-      </div>
-
-      {/* Bottom Track Indicator Strip */}
-      <div className="grid grid-cols-8 gap-2 mt-3 px-3 text-center">
-        {tracks.map((t, i) => (
-          <div
-            key={t.id}
-            onClick={() => setActiveTrackId(t.id)}
-            className={`cursor-pointer transition-all rounded py-1 px-0.5 text-[9px] font-bold uppercase truncate border ${
-              activeTrackId === t.id
-                ? 'bg-white/10 border-white/40 text-white'
-                : 'border-transparent text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            <span style={{ color: t.colorHex }}>●</span> {i + 1}. {t.name.split(' ')[0]}
-          </div>
-        ))}
+        {/* Bottom Track Indicator Strip */}
+        <div className="grid grid-cols-8 gap-2 mt-3 px-3 text-center">
+          {tracks.map((t, i) => (
+            <div
+              key={t.id}
+              onClick={() => setActiveTrackId(t.id)}
+              className={`cursor-pointer transition-all rounded py-1 px-0.5 text-[9px] font-bold uppercase truncate border ${
+                activeTrackId === t.id
+                  ? 'bg-white/10 border-white/40 text-white'
+                  : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              <span style={{ color: t.colorHex }}>●</span> {i + 1}. {t.name.split(' ')[0]}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

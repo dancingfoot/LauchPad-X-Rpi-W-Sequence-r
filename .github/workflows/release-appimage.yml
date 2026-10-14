@@ -1,0 +1,106 @@
+name: Build & Release Linux AppImage
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Publish a GitHub Release with the AppImage'
+        required: false
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Optional manual release tag (e.g. v1.0.0, leave empty to use current commit/tag)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-appimage:
+    name: Build Linux AppImage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Web Application
+        run: npm run build
+
+      - name: Build AppImage package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx --yes electron-builder --linux AppImage
+
+      - name: Generate Checksums
+        run: |
+          cd release-dist
+          sha256sum *.AppImage > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload AppImage as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Launchpad-X-Sequencer-Linux-AppImage
+          path: |
+            release-dist/*.AppImage
+            release-dist/SHA256SUMS.txt
+          retention-days: 30
+
+      - name: Compute Release Tag
+        id: release_info
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            TAG="${{ github.event.inputs.release_tag }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="v1.0.0-${GITHUB_SHA::7}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag }}
+          name: Launchpad X Sequencer ${{ steps.release_info.outputs.tag }}
+          files: |
+            release-dist/*.AppImage
+            release-dist/SHA256SUMS.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## Novation Launchpad X MIDI Sequencer Desktop AppImage
+
+            ### Included Artifacts
+            - **Launchpad X Sequencer AppImage (`.AppImage`)**: Standalone, portable Linux desktop executable with native Web MIDI, SysEx, and drift-compensated audio support.
+            - **`SHA256SUMS.txt`**: Cryptographic integrity checksums.
+
+            ### How to Run on Linux
+            ```bash
+            # Make the AppImage executable:
+            chmod +x Launchpad-X-Sequencer-*.AppImage
+
+            # Launch the application:
+            ./Launchpad-X-Sequencer-*.AppImage
+            ```
+
+            *Plug in your Novation Launchpad X via USB and start sequencing!*

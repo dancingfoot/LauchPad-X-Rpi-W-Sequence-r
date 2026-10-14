@@ -1,4 +1,28 @@
-import { MidiDeviceOption } from '../types/sequencer';
+import { MidiDeviceOption, TrackData } from '../types/sequencer';
+
+export const LPX_COLORS = {
+  OFF: 0,
+  DARK_GRAY: 1,
+  GRAY: 2,
+  WHITE: 3,
+  RED_BRIGHT: 5,
+  RED_DIM: 7,
+  AMBER_BRIGHT: 9,
+  AMBER_DIM: 11,
+  YELLOW_BRIGHT: 13,
+  YELLOW_DIM: 15,
+  LIME_BRIGHT: 17,
+  LIME_DIM: 19,
+  GREEN_BRIGHT: 21,
+  GREEN_DIM: 23,
+  CYAN_BRIGHT: 37,
+  CYAN_DIM: 39,
+  BLUE_BRIGHT: 45,
+  BLUE_DIM: 47,
+  PURPLE_BRIGHT: 49,
+  PURPLE_DIM: 51,
+  PLAYHEAD_IDLE: 119, // Muted cyan glow for idle scanning step
+};
 
 class MidiManager {
   private midiAccess: MIDIAccess | null = null;
@@ -6,9 +30,12 @@ class MidiManager {
   public availableInputs: MidiDeviceOption[] = [];
   public selectedOutputId: string = '';
   public selectedInputId: string = '';
+  public dawModeActive: boolean = true; // Always prioritize DAW Mode for sequencer
 
   public onPadNoteReceived: ((note: number, velocity: number) => void) | null = null;
   public onControlChangeReceived: ((cc: number, value: number) => void) | null = null;
+  public onDawModeChanged: ((active: boolean) => void) | null = null;
+  public onRequestFullRefresh: (() => void) | null = null;
 
   public isSupported(): boolean {
     return typeof navigator !== 'undefined' && 'requestMIDIAccess' in navigator;
@@ -25,31 +52,49 @@ class MidiManager {
 
       this.midiAccess.onstatechange = () => {
         this.updateDeviceList();
+        this.attachToAllInputs();
+        this.enableDawMode();
       };
 
-      // Auto-select Launchpad X or first available port
-      const launchpadOut = this.availableOutputs.find(
-        (o) => o.name.toLowerCase().includes('launchpad') || o.name.toLowerCase().includes('lpx')
-      );
-      if (launchpadOut) {
-        this.selectOutput(launchpadOut.id);
-        this.sendProgrammerModeSysEx();
+      // Listen to all inputs simultaneously so physical button presses are never lost
+      this.attachToAllInputs();
+
+      // Find Launchpad outputs
+      const dawPort = this.availableOutputs.find((o) => this.isDawPortName(o.name));
+      const anyLpx = this.availableOutputs.find((o) => this.isLaunchpadName(o.name));
+      const targetOut = dawPort || anyLpx;
+
+      if (targetOut) {
+        this.selectedOutputId = targetOut.id;
       } else if (this.availableOutputs.length > 0) {
-        this.selectOutput(this.availableOutputs[0].id);
+        this.selectedOutputId = this.availableOutputs[0].id;
       }
 
-      const launchpadIn = this.availableInputs.find(
-        (i) => i.name.toLowerCase().includes('launchpad') || i.name.toLowerCase().includes('lpx')
-      );
-      if (launchpadIn) {
-        this.selectInput(launchpadIn.id);
-      }
+      // Automatically engage Launchpad X DAW Programmer Mode on connect
+      this.enableDawMode();
 
       return true;
     } catch {
-      // In permission-denied or iframe sandbox environments, gracefully fall back
       return false;
     }
+  }
+
+  public isLaunchpadName(name: string): boolean {
+    const lower = (name || '').toLowerCase();
+    return lower.includes('launchpad') || lower.includes('lpx');
+  }
+
+  public isDawPortName(name: string): boolean {
+    const lower = (name || '').toLowerCase();
+    return (
+      this.isLaunchpadName(name) &&
+      (lower.includes('daw') ||
+        lower.includes('midi 2') ||
+        lower.includes('midiout2') ||
+        lower.includes('midiin2') ||
+        lower.includes(' 2') ||
+        lower.includes('port 2'))
+    );
   }
 
   private updateDeviceList() {
@@ -74,25 +119,41 @@ class MidiManager {
     });
   }
 
+  public attachToAllInputs() {
+    if (!this.midiAccess) return;
+
+    this.midiAccess.inputs.forEach((input) => {
+      input.onmidimessage = (event: MIDIMessageEvent) => {
+        this.handleIncomingMidi(event);
+      };
+    });
+  }
+
   public selectOutput(deviceId: string) {
     this.selectedOutputId = deviceId;
   }
 
   public selectInput(deviceId: string) {
     this.selectedInputId = deviceId;
+    this.attachToAllInputs();
+  }
+
+  /**
+   * Raw transmission to all Launchpad outputs (ensures Port 2/DAW receives messages).
+   */
+  public sendRawToLaunchpad(msg: number[]) {
     if (!this.midiAccess) return;
 
-    // Detach from all inputs first
-    this.midiAccess.inputs.forEach((input) => {
-      input.onmidimessage = null;
+    this.midiAccess.outputs.forEach((output) => {
+      const name = output.name || '';
+      if (this.isLaunchpadName(name) || output.id === this.selectedOutputId) {
+        try {
+          output.send(msg);
+        } catch {
+          // ignore transient MIDI send errors
+        }
+      }
     });
-
-    const targetInput = this.midiAccess.inputs.get(deviceId);
-    if (targetInput) {
-      targetInput.onmidimessage = (event: MIDIMessageEvent) => {
-        this.handleIncomingMidi(event);
-      };
-    }
   }
 
   private handleIncomingMidi(event: MIDIMessageEvent) {
@@ -100,40 +161,108 @@ class MidiManager {
     const [status, data1, data2] = event.data;
     const messageType = status & 0xf0;
 
-    if (messageType === 0x90) { // Note On
-      if (this.onPadNoteReceived) {
-        this.onPadNoteReceived(data1, data2);
+    // Note On (Pad press, or Scene button press)
+    if (messageType === 0x90) {
+      // If velocity is 0, interpret as note off
+      const vel = data2;
+
+      // Physical Session button pressed via Note message
+      if (data1 === 95 && vel > 0) {
+        this.enableDawMode();
+        if (this.onRequestFullRefresh) this.onRequestFullRefresh();
       }
-    } else if (messageType === 0x80) { // Note Off
+
+      if (this.onPadNoteReceived) {
+        this.onPadNoteReceived(data1, vel);
+      }
+    }
+    // Note Off
+    else if (messageType === 0x80) {
       if (this.onPadNoteReceived) {
         this.onPadNoteReceived(data1, 0);
       }
-    } else if (messageType === 0xb0) { // Control Change
+    }
+    // Control Change (Top buttons CC 91-98, or Scene buttons in Session mode)
+    else if (messageType === 0xb0) {
+      // Physical Session / Mixer button pressed (CC 95)
+      // Re-assert DAW Mode + Programmer Mode and refresh lights
+      if (data1 === 95 && data2 > 0) {
+        this.enableDawMode();
+        if (this.onRequestFullRefresh) {
+          this.onRequestFullRefresh();
+        }
+      }
+
       if (this.onControlChangeReceived) {
         this.onControlChangeReceived(data1, data2);
       }
     }
   }
 
-  public sendProgrammerModeSysEx() {
-    if (!this.midiAccess || !this.selectedOutputId) return;
-    const output = this.midiAccess.outputs.get(this.selectedOutputId);
-    if (!output) return;
+  /**
+   * Novation Launchpad X Official DAW Programmer Mode Handshake:
+   * 1. Set DAW Mode ON:              F0 00 20 29 02 0C 10 01 F7
+   * 2. Select Programmer Mode (0E 01): F0 00 20 29 02 0C 0E 01 F7
+   * 3. Set Programmer Layout (00 7F):  F0 00 20 29 02 0C 00 7F F7
+   */
+  public enableDawMode() {
+    if (!this.midiAccess) return;
 
-    // Novation Launchpad X Programmer Mode SysEx
-    // F0 00 20 29 02 0C 00 0D F7
-    const sysex = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x00, 0x0d, 0xf7];
-    try {
-      output.send(sysex);
-    } catch {
-      // Ignored if SysEx not permitted
+    const dawModeOn = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x01, 0xf7];
+    const programmerModeSelect = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x0e, 0x01, 0xf7];
+    const programmerLayout = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x00, 0x7f, 0xf7];
+
+    this.midiAccess.outputs.forEach((output) => {
+      const name = (output.name || '').toLowerCase();
+      if (this.isLaunchpadName(name) || output.id === this.selectedOutputId) {
+        try {
+          output.send(dawModeOn);
+          output.send(programmerModeSelect);
+          output.send(programmerLayout);
+        } catch {
+          // ignore
+        }
+      }
+    });
+
+    this.dawModeActive = true;
+    if (this.onDawModeChanged) {
+      this.onDawModeChanged(true);
     }
   }
 
+  /**
+   * Re-asserts DAW Programmer Mode without disconnecting.
+   */
+  public refreshDawMode() {
+    this.enableDawMode();
+  }
+
+  public disableDawMode() {
+    // Keep DAW Mode active for the sequencer as requested by user.
+    // If explicitly disabled, send DAW mode off:
+    if (!this.midiAccess) return;
+    const dawModeOff = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x00, 0xf7];
+    this.sendRawToLaunchpad(dawModeOff);
+    this.dawModeActive = false;
+    if (this.onDawModeChanged) {
+      this.onDawModeChanged(false);
+    }
+  }
+
+  /**
+   * Transmits musical notes to external synthesizer / DAW virtual ports.
+   * Never transmits musical notes to the Launchpad X to prevent matrix corruption.
+   */
   public sendNote(channel: number, pitch: number, velocity: number, gateSec: number) {
     if (!this.midiAccess || !this.selectedOutputId) return;
     const output = this.midiAccess.outputs.get(this.selectedOutputId);
     if (!output) return;
+
+    // Do not route audio notes directly to Launchpad X surface
+    if (this.isLaunchpadName(output.name || '')) {
+      return;
+    }
 
     const clampedChannel = Math.max(0, Math.min(15, channel));
     const noteOnStatus = 0x90 | clampedChannel;
@@ -145,18 +274,149 @@ class MidiManager {
       try {
         output.send([noteOffStatus, pitch, 0]);
       } catch {
-        // Output might be closed
+        // ignore
       }
     }, gateSec * 1000);
   }
 
-  public setLaunchpadPadColor(padNote: number, paletteColor: number) {
-    if (!this.midiAccess || !this.selectedOutputId) return;
-    const output = this.midiAccess.outputs.get(this.selectedOutputId);
-    if (!output) return;
+  /**
+   * Comprehensive Full Refresh of all 64 pads, 8 scene buttons, and 8 top CC buttons.
+   * Called on pattern load, page switch, track mute/solo, and transport start/stop.
+   */
+  public renderLaunchpadGrid(
+    tracks: TrackData[],
+    currentStep: number,
+    running: boolean,
+    activePage: number,
+    activeTrackId: number
+  ) {
+    if (!this.midiAccess) return;
 
-    // In Programmer Mode, lighting a pad is a Note On on Channel 1 (status 0x90) with velocity = color index
-    output.send([0x90, padNote, paletteColor]);
+    const pageOffset = activePage * 8;
+    const isStepInCurrentPage = Math.floor((currentStep % 16) / 8) === activePage;
+    const currentStepInPage = currentStep % 8;
+
+    // 1. Render all 64 Grid Pads (Rows 1..8, Cols 1..8)
+    for (let rowIdx = 0; rowIdx < 8; rowIdx++) {
+      const track = tracks[rowIdx];
+      const lpxRow = 8 - rowIdx;
+
+      for (let colIdx = 0; colIdx < 8; colIdx++) {
+        const stepIdx = pageOffset + colIdx;
+        const padNote = lpxRow * 10 + (colIdx + 1);
+        const step = track.steps[stepIdx];
+        const isPlayhead = running && isStepInCurrentPage && currentStepInPage === colIdx;
+
+        let color = LPX_COLORS.OFF;
+        if (isPlayhead) {
+          color = step?.active ? LPX_COLORS.WHITE : LPX_COLORS.PLAYHEAD_IDLE;
+        } else if (step?.active) {
+          color = track.mute ? LPX_COLORS.RED_DIM : track.paletteIndex;
+        } else {
+          color = track.paletteIndex + 2; // subtle dim track color
+        }
+
+        this.sendRawToLaunchpad([0x90, padNote, color]);
+      }
+    }
+
+    // 2. Render 8 Right-Hand Scene Buttons (Notes / CC 19 to 89)
+    const scene1Col = activePage === 0 ? LPX_COLORS.CYAN_BRIGHT : LPX_COLORS.CYAN_DIM;
+    const scene2Col = activePage === 1 ? LPX_COLORS.CYAN_BRIGHT : LPX_COLORS.CYAN_DIM;
+    const scene3Col = activeTrackId < 4 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM;
+    const scene4Col = activeTrackId >= 4 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM;
+    const anyMuted = tracks.some((t) => t.mute);
+    const scene7Col = anyMuted ? LPX_COLORS.RED_BRIGHT : LPX_COLORS.RED_DIM;
+    const scene8Col = running ? LPX_COLORS.GREEN_BRIGHT : LPX_COLORS.RED_DIM;
+
+    const sceneButtons = [
+      { num: 89, color: scene1Col }, // Page 1
+      { num: 79, color: scene2Col }, // Page 2
+      { num: 69, color: scene3Col }, // Tracks 1-4
+      { num: 59, color: scene4Col }, // Tracks 5-8
+      { num: 49, color: LPX_COLORS.AMBER_DIM },
+      { num: 39, color: LPX_COLORS.AMBER_DIM },
+      { num: 29, color: scene7Col }, // Mute All
+      { num: 19, color: scene8Col }, // Play / Stop
+    ];
+
+    sceneButtons.forEach(({ num, color }) => {
+      // Send both Note On (Programmer mode) and CC (Session mode) for absolute compatibility
+      this.sendRawToLaunchpad([0x90, num, color]);
+      this.sendRawToLaunchpad([0xb0, num, color]);
+    });
+
+    // 3. Render 8 Top Control Buttons (CC 91 to 98)
+    const cc93Col = activePage === 0 ? LPX_COLORS.CYAN_BRIGHT : LPX_COLORS.CYAN_DIM;
+    const cc94Col = activePage === 1 ? LPX_COLORS.CYAN_BRIGHT : LPX_COLORS.CYAN_DIM;
+    const cc95Col = this.dawModeActive ? LPX_COLORS.CYAN_BRIGHT : LPX_COLORS.CYAN_DIM;
+    const cc98Col = running ? LPX_COLORS.GREEN_BRIGHT : LPX_COLORS.RED_DIM;
+
+    this.sendRawToLaunchpad([0xb0, 91, LPX_COLORS.WHITE]);
+    this.sendRawToLaunchpad([0xb0, 92, LPX_COLORS.WHITE]);
+    this.sendRawToLaunchpad([0xb0, 93, cc93Col]);
+    this.sendRawToLaunchpad([0xb0, 94, cc94Col]);
+    this.sendRawToLaunchpad([0xb0, 95, cc95Col]);
+    this.sendRawToLaunchpad([0xb0, 96, LPX_COLORS.GRAY]);
+    this.sendRawToLaunchpad([0xb0, 97, LPX_COLORS.GRAY]);
+    this.sendRawToLaunchpad([0xb0, 98, cc98Col]);
+  }
+
+  /**
+   * Ultra-fast delta update executed on every 16th note tick.
+   * Only updates the 8 pads in the previous column and 8 pads in the new column.
+   * Zero USB congestion, zero dropped frames, crystal clear playhead sweep.
+   */
+  public updatePlayheadTick(
+    tracks: TrackData[],
+    prevStep: number,
+    currentStep: number,
+    running: boolean,
+    activePage: number
+  ) {
+    if (!this.midiAccess) return;
+
+    const pageOffset = activePage * 8;
+    const prevStepInPage = prevStep % 8;
+    const currentStepInPage = currentStep % 8;
+    const isPrevInPage = Math.floor((prevStep % 16) / 8) === activePage;
+    const isCurrentInPage = Math.floor((currentStep % 16) / 8) === activePage;
+
+    // 1. Restore previous column to normal track colors
+    if (isPrevInPage && prevStep !== currentStep) {
+      const colIdx = prevStepInPage;
+      const stepIdx = pageOffset + colIdx;
+      for (let rowIdx = 0; rowIdx < 8; rowIdx++) {
+        const track = tracks[rowIdx];
+        if (!track) continue;
+        const lpxRow = 8 - rowIdx;
+        const padNote = lpxRow * 10 + (colIdx + 1);
+        const step = track.steps[stepIdx];
+        const color = step?.active
+          ? (track.mute ? LPX_COLORS.RED_DIM : track.paletteIndex)
+          : track.paletteIndex + 2;
+        this.sendRawToLaunchpad([0x90, padNote, color]);
+      }
+    }
+
+    // 2. Light up new playhead column
+    if (isCurrentInPage && running) {
+      const colIdx = currentStepInPage;
+      const stepIdx = pageOffset + colIdx;
+      for (let rowIdx = 0; rowIdx < 8; rowIdx++) {
+        const track = tracks[rowIdx];
+        if (!track) continue;
+        const lpxRow = 8 - rowIdx;
+        const padNote = lpxRow * 10 + (colIdx + 1);
+        const step = track.steps[stepIdx];
+        // White flash on active beat, soft glowing cyan on idle beat
+        const color = step?.active ? LPX_COLORS.WHITE : LPX_COLORS.PLAYHEAD_IDLE;
+        this.sendRawToLaunchpad([0x90, padNote, color]);
+      }
+    }
+
+    // 3. Keep Transport LED Green while running
+    this.sendRawToLaunchpad([0xb0, 98, running ? LPX_COLORS.GREEN_BRIGHT : LPX_COLORS.RED_DIM]);
   }
 }
 
