@@ -8,8 +8,10 @@ interface TopControlsProps {
   onBpmChange: (bpm: number) => void;
   activePage: number;
   setActivePage: (page: number) => void;
-  dawModeActive: boolean;
-  onToggleDawMode: () => void;
+  currentMode: 'session' | 'note' | 'custom';
+  onSelectMode: (mode: 'session' | 'note' | 'custom') => void;
+  dawModeActive?: boolean;
+  onToggleDawMode?: () => void;
   onOctaveShift?: (delta: number) => void;
 }
 
@@ -20,8 +22,8 @@ export const TopControls: React.FC<TopControlsProps> = ({
   onBpmChange,
   activePage,
   setActivePage,
-  dawModeActive,
-  onToggleDawMode,
+  currentMode,
+  onSelectMode,
   onOctaveShift,
 }) => {
   return (
@@ -78,10 +80,10 @@ export const TopControls: React.FC<TopControlsProps> = ({
 
       {/* CC 95: Launchpad Hardware SESSION / MIXER Button */}
       <button
-        onClick={onToggleDawMode}
-        title="SESSION / MIXER (DAW Mode): Re-asserts DAW Programmer Mode and refreshes all pad lights"
+        onClick={() => onSelectMode('session')}
+        title="SESSION / MIXER (Sequencer Mode): 8-Track step sequencer grid"
         className={`w-12 h-7 rounded-full border active:scale-95 transition-all flex flex-col items-center justify-center text-[8px] font-bold tracking-tight ${
-          dawModeActive
+          currentMode === 'session'
             ? 'bg-[#00e5ff] text-black border-[#00e5ff] shadow-[0_0_12px_rgba(0,229,255,0.7)]'
             : 'bg-[#18202c] hover:bg-[#222e40] border-[#2a3c56] text-[#00e5ff]'
         }`}
@@ -91,20 +93,30 @@ export const TopControls: React.FC<TopControlsProps> = ({
       </button>
 
       {/* CC 96: Launchpad Hardware NOTE Mode Button */}
-      <div
-        title="Hardware Note Mode: Reserved for physical Launchpad internal note layout"
-        className="w-12 h-7 rounded-full border bg-[#171922] border-[#292d3b] text-slate-400 flex items-center justify-center text-[9px] font-bold tracking-tight select-none cursor-default"
+      <button
+        onClick={() => onSelectMode('note')}
+        title="Hardware Note Mode: Play melodic notes and scales directly on pads"
+        className={`w-12 h-7 rounded-full border active:scale-95 transition-all flex items-center justify-center text-[9px] font-bold tracking-tight ${
+          currentMode === 'note'
+            ? 'bg-[#d500f9] text-white border-[#d500f9] shadow-[0_0_12px_rgba(213,0,249,0.7)]'
+            : 'bg-[#1b1726] hover:bg-[#261f36] border-[#372852] text-[#d500f9]'
+        }`}
       >
         NOTE
-      </div>
+      </button>
 
       {/* CC 97: Launchpad Hardware CUSTOM Mode Button */}
-      <div
-        title="Hardware Custom Mode: Reserved for physical Launchpad internal custom mapping"
-        className="w-12 h-7 rounded-full border bg-[#171922] border-[#292d3b] text-slate-400 flex items-center justify-center text-[9px] font-bold tracking-tight select-none cursor-default"
+      <button
+        onClick={() => onSelectMode('custom')}
+        title="Hardware Custom Mode: Launchpad custom user layout mapping"
+        className={`w-12 h-7 rounded-full border active:scale-95 transition-all flex items-center justify-center text-[9px] font-bold tracking-tight ${
+          currentMode === 'custom'
+            ? 'bg-[#ff9100] text-black border-[#ff9100] shadow-[0_0_12px_rgba(255,145,0,0.7)]'
+            : 'bg-[#251d14] hover:bg-[#362718] border-[#4f361a] text-[#ff9100]'
+        }`}
       >
         CUSTOM
-      </div>
+      </button>
 
       {/* CC 98: Record / Capture MIDI Transport Button */}
       <button

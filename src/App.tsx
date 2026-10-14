@@ -29,7 +29,8 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('multitrack');
   const [isPiModalOpen, setIsPiModalOpen] = useState<boolean>(false);
   const [modalInitialTab, setModalInitialTab] = useState<'export' | 'import' | 'link' | 'setup'>('export');
-  const [dawModeActive, setDawModeActive] = useState<boolean>(false);
+  const [dawModeActive, setDawModeActive] = useState<boolean>(true);
+  const [currentMode, setCurrentMode] = useState<'session' | 'note' | 'custom'>('session');
 
   // Ableton Link State
   const [linkState, setLinkState] = useState<LinkState>(linkSync.state);
@@ -74,6 +75,7 @@ export default function App() {
   const setActiveTrackIdRef = useRef<(id: number) => void>(() => {});
   const toggleMuteAllRef = useRef<() => void>(() => {});
   const handleBpmChangeRef = useRef<(bpm: number) => void>(() => {});
+  const handleSelectModeRef = useRef<(mode: 'session' | 'note' | 'custom') => void>(() => {});
 
   // Subscribe to Ableton Link real-time updates
   useEffect(() => {
@@ -129,18 +131,25 @@ export default function App() {
     }
   }, []);
 
-  // Re-assert DAW Mode Handshake and immediately refresh all pad lights
-  const handleSessionModeReassert = useCallback(() => {
-    midiManager.enableDawMode();
-    setDawModeActive(true);
-    midiManager.renderLaunchpadGrid(
-      tracksRef.current,
-      currentStepRef.current,
-      runningRef.current,
-      activePageRef.current,
-      activeTrackIdRef.current
-    );
+  // Switch Modes: Session (Sequencer Grid), Note (Live Instrument), Custom (User Mapping)
+  const handleSelectMode = useCallback((mode: 'session' | 'note' | 'custom') => {
+    setCurrentMode(mode);
+    if (mode === 'session') {
+      midiManager.setSessionMode();
+      setDawModeActive(true);
+    } else if (mode === 'note') {
+      midiManager.setNoteMode();
+      setDawModeActive(false);
+    } else if (mode === 'custom') {
+      midiManager.setCustomMode();
+      setDawModeActive(false);
+    }
   }, []);
+
+  // Re-assert DAW Session Mode and immediately refresh all pad lights
+  const handleSessionModeReassert = useCallback(() => {
+    handleSelectMode('session');
+  }, [handleSelectMode]);
 
   // Initialize Audio & MIDI
   useEffect(() => {
@@ -186,6 +195,11 @@ export default function App() {
         }
       };
 
+      midiManager.onModeChanged = (mode) => {
+        setCurrentMode(mode);
+        setDawModeActive(mode === 'session');
+      };
+
       midiManager.onRequestFullRefresh = () => {
         midiManager.renderLaunchpadGrid(
           tracksRef.current,
@@ -215,6 +229,18 @@ export default function App() {
         // Listen for hardware Launchpad X pad presses & right scene buttons
         midiManager.onPadNoteReceived = (note, velocity) => {
           if (velocity > 0) {
+            // In Note Mode: Play sound of active track live!
+            if (midiManager.currentMode === 'note') {
+              const activeTrk = tracksRef.current[activeTrackIdRef.current];
+              if (activeTrk) {
+                synth.playImmediatePreview(activeTrk, note, velocity);
+                if (midiManager.selectedOutputId) {
+                  midiManager.sendNote(activeTrk.channel, note, velocity, 0.3);
+                }
+              }
+              return;
+            }
+
             const row = Math.floor(note / 10);
             const col = note % 10;
 
@@ -250,9 +276,14 @@ export default function App() {
               // Record / Play transport button
               togglePlayRef.current();
             } else if (cc === 95) {
-              // Physical SESSION / MIXER button pressed:
-              // Re-affirm DAW Programmer Mode & refresh pad LEDs!
-              handleSessionModeReassert();
+              // Physical SESSION / MIXER button pressed -> Session Mode
+              handleSelectModeRef.current('session');
+            } else if (cc === 96) {
+              // Physical NOTE button pressed -> Note Mode
+              handleSelectModeRef.current('note');
+            } else if (cc === 97) {
+              // Physical CUSTOM button pressed -> Custom Mode
+              handleSelectModeRef.current('custom');
             } else if (cc === 93) {
               // Left arrow -> Page 1
               setActivePageRef.current(0);
@@ -288,13 +319,8 @@ export default function App() {
 
   // Toggle Launchpad X DAW Mode Handshake
   const toggleDawMode = useCallback(() => {
-    if (midiManager.dawModeActive) {
-      midiManager.disableDawMode();
-    } else {
-      midiManager.enableDawMode();
-    }
-    setDawModeActive(midiManager.dawModeActive);
-  }, []);
+    handleSelectMode(currentMode === 'session' ? 'note' : 'session');
+  }, [currentMode, handleSelectMode]);
 
   // Update Synth BPM (also sync to Ableton Link)
   const handleBpmChange = useCallback((newBpm: number) => {
@@ -319,10 +345,20 @@ export default function App() {
   const togglePlay = useCallback(() => {
     setRunning((prev) => {
       const nextRunning = !prev;
+      runningRef.current = nextRunning;
       if (nextRunning) {
         synth.start(tracksRef.current, currentStepRef.current);
       } else {
         synth.stop();
+        // Immediately restore all Launchpad LEDs back to pure track colors!
+        // This guarantees no pads (such as row 8 pad 5) are ever left stuck on white!
+        midiManager.renderLaunchpadGrid(
+          tracksRef.current,
+          0,
+          false,
+          activePageRef.current,
+          activeTrackIdRef.current
+        );
       }
       return nextRunning;
     });
@@ -455,6 +491,7 @@ export default function App() {
   setActiveTrackIdRef.current = setActiveTrackId;
   toggleMuteAllRef.current = toggleMuteAll;
   handleBpmChangeRef.current = handleBpmChange;
+  handleSelectModeRef.current = handleSelectMode;
 
   // Import Tracks from Pi JSON
   const handleImportTracks = useCallback((importedTracks: TrackData[], importedBpm: number) => {
@@ -551,6 +588,8 @@ export default function App() {
             onToggleMuteAll={toggleMuteAll}
             dawModeActive={dawModeActive}
             onToggleDawMode={toggleDawMode}
+            currentMode={currentMode}
+            onSelectMode={handleSelectMode}
           />
         </div>
 

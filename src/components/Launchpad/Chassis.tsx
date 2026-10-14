@@ -26,6 +26,8 @@ interface ChassisProps {
   onToggleMuteAll: () => void;
   dawModeActive: boolean;
   onToggleDawMode: () => void;
+  currentMode: 'session' | 'note' | 'custom';
+  onSelectMode: (mode: 'session' | 'note' | 'custom') => void;
 }
 
 export const Chassis: React.FC<ChassisProps> = ({
@@ -49,6 +51,8 @@ export const Chassis: React.FC<ChassisProps> = ({
   onToggleMuteAll,
   dawModeActive,
   onToggleDawMode,
+  currentMode,
+  onSelectMode,
 }) => {
   return (
     <div className="flex flex-col items-center gap-3">
@@ -101,12 +105,12 @@ export const Chassis: React.FC<ChassisProps> = ({
             <span className="text-slate-400 font-medium">LAUNCHPAD X</span>
           </div>
           <div className="flex items-center gap-2 text-[10px] font-mono tracking-tight">
-            <span className={dawModeActive ? 'text-cyan-400 font-bold' : 'text-slate-600'}>
-              {dawModeActive ? '● DAW / PROGRAMMER MODE' : '○ STANDALONE MODE'}
+            <span className={currentMode === 'session' ? 'text-cyan-400 font-bold' : currentMode === 'note' ? 'text-purple-400 font-bold' : 'text-amber-400 font-bold'}>
+              {currentMode === 'session' ? '● SESSION / DAW MODE' : currentMode === 'note' ? '● NOTE MODE (SCALES)' : '● CUSTOM USER MODE'}
             </span>
             <button
-              onClick={onToggleDawMode}
-              title="Force send DAW Mode Handshake and Refresh All LED Lights"
+              onClick={() => onSelectMode('session')}
+              title="Force return to Session Mode and refresh all lights"
               className="px-2 py-0.5 bg-[#1f2533] hover:bg-[#2c3447] text-cyan-300 rounded text-[9px] font-bold border border-[#2d374d] active:scale-95 transition-all"
             >
               RESYNC LIGHTS
@@ -122,6 +126,8 @@ export const Chassis: React.FC<ChassisProps> = ({
           onBpmChange={onBpmChange}
           activePage={activePage}
           setActivePage={setActivePage}
+          currentMode={currentMode}
+          onSelectMode={onSelectMode}
           dawModeActive={dawModeActive}
           onToggleDawMode={onToggleDawMode}
         />

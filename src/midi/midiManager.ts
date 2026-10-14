@@ -30,11 +30,13 @@ class MidiManager {
   public availableInputs: MidiDeviceOption[] = [];
   public selectedOutputId: string = '';
   public selectedInputId: string = '';
-  public dawModeActive: boolean = true; // Always prioritize DAW Mode for sequencer
+  public currentMode: 'session' | 'note' | 'custom' = 'session';
+  public dawModeActive: boolean = true;
 
   public onPadNoteReceived: ((note: number, velocity: number) => void) | null = null;
   public onControlChangeReceived: ((cc: number, value: number) => void) | null = null;
   public onDawModeChanged: ((active: boolean) => void) | null = null;
+  public onModeChanged: ((mode: 'session' | 'note' | 'custom') => void) | null = null;
   public onRequestFullRefresh: (() => void) | null = null;
 
   public isSupported(): boolean {
@@ -184,13 +186,17 @@ class MidiManager {
     }
     // Control Change (Top buttons CC 91-98, or Scene buttons in Session mode)
     else if (messageType === 0xb0) {
-      // Physical Session / Mixer button pressed (CC 95)
-      // Re-assert DAW Mode + Programmer Mode and refresh lights
+      // Physical SESSION / MIXER button (CC 95): switch to Sequencer Session mode
       if (data1 === 95 && data2 > 0) {
-        this.enableDawMode();
-        if (this.onRequestFullRefresh) {
-          this.onRequestFullRefresh();
-        }
+        this.setSessionMode();
+      }
+      // Physical NOTE button (CC 96): switch to Playable Note mode
+      else if (data1 === 96 && data2 > 0) {
+        this.setNoteMode();
+      }
+      // Physical CUSTOM button (CC 97): switch to Custom mode
+      else if (data1 === 97 && data2 > 0) {
+        this.setCustomMode();
       }
 
       if (this.onControlChangeReceived) {
@@ -200,54 +206,100 @@ class MidiManager {
   }
 
   /**
-   * Novation Launchpad X Official DAW Programmer Mode Handshake:
-   * 1. Set DAW Mode ON:              F0 00 20 29 02 0C 10 01 F7
-   * 2. Select Programmer Mode (0E 01): F0 00 20 29 02 0C 0E 01 F7
-   * 3. Set Programmer Layout (00 7F):  F0 00 20 29 02 0C 00 7F F7
+   * Switches Launchpad X to Session / Sequencer Mode (DAW Programmer Mode).
+   * 1. Sets DAW mode ON:              F0 00 20 29 02 0C 10 01 F7
+   * 2. Selects Programmer Mode (0E 01): F0 00 20 29 02 0C 0E 01 F7
+   * 3. Sets Programmer Layout (00 7F):  F0 00 20 29 02 0C 00 7F F7
    */
-  public enableDawMode() {
+  public async setSessionMode() {
     if (!this.midiAccess) return;
+    this.currentMode = 'session';
+    this.dawModeActive = true;
 
-    const dawModeOn = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x01, 0xf7];
-    const programmerModeSelect = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x0e, 0x01, 0xf7];
+    const dawOn = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x01, 0xf7];
+    const programmerMode = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x0e, 0x01, 0xf7];
     const programmerLayout = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x00, 0x7f, 0xf7];
 
-    this.midiAccess.outputs.forEach((output) => {
-      const name = (output.name || '').toLowerCase();
-      if (this.isLaunchpadName(name) || output.id === this.selectedOutputId) {
-        try {
-          output.send(dawModeOn);
-          output.send(programmerModeSelect);
-          output.send(programmerLayout);
-        } catch {
-          // ignore
-        }
-      }
-    });
+    this.sendRawToLaunchpad(dawOn);
+    await new Promise((r) => setTimeout(r, 30));
+    this.sendRawToLaunchpad(programmerMode);
+    await new Promise((r) => setTimeout(r, 30));
+    this.sendRawToLaunchpad(programmerLayout);
 
-    this.dawModeActive = true;
-    if (this.onDawModeChanged) {
-      this.onDawModeChanged(true);
-    }
+    if (this.onDawModeChanged) this.onDawModeChanged(true);
+    if (this.onModeChanged) this.onModeChanged('session');
+    if (this.onRequestFullRefresh) this.onRequestFullRefresh();
   }
 
   /**
-   * Re-asserts DAW Programmer Mode without disconnecting.
+   * Switches Launchpad X to Live NOTE Mode:
+   * 1. Switch from Programmer to Live mode: F0 00 20 29 02 0C 0E 00 F7
+   * 2. Select Note layout (01h):             F0 00 20 29 02 0C 00 01 F7
+   * 3. Set DAW Mode OFF:                    F0 00 20 29 02 0C 10 00 F7
+   * Restores internal musical scale playing on the physical Launchpad X!
    */
+  public async setNoteMode() {
+    if (!this.midiAccess) return;
+    this.currentMode = 'note';
+    this.dawModeActive = false;
+
+    const liveMode = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x0e, 0x00, 0xf7];
+    const noteLayout = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x00, 0x01, 0xf7];
+    const dawOff = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x00, 0xf7];
+
+    this.sendRawToLaunchpad(liveMode);
+    await new Promise((r) => setTimeout(r, 30));
+    this.sendRawToLaunchpad(noteLayout);
+    await new Promise((r) => setTimeout(r, 30));
+    this.sendRawToLaunchpad(dawOff);
+
+    this.sendRawToLaunchpad([0xb0, 95, LPX_COLORS.DARK_GRAY]);
+    this.sendRawToLaunchpad([0xb0, 96, LPX_COLORS.CYAN_BRIGHT]);
+    this.sendRawToLaunchpad([0xb0, 97, LPX_COLORS.DARK_GRAY]);
+
+    if (this.onDawModeChanged) this.onDawModeChanged(false);
+    if (this.onModeChanged) this.onModeChanged('note');
+  }
+
+  /**
+   * Switches Launchpad X to Live CUSTOM Mode:
+   * 1. Switch from Programmer to Live mode: F0 00 20 29 02 0C 0E 00 F7
+   * 2. Select Custom 1 layout (04h):         F0 00 20 29 02 0C 00 04 F7
+   * 3. Set DAW Mode OFF:                    F0 00 20 29 02 0C 10 00 F7
+   */
+  public async setCustomMode() {
+    if (!this.midiAccess) return;
+    this.currentMode = 'custom';
+    this.dawModeActive = false;
+
+    const liveMode = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x0e, 0x00, 0xf7];
+    const customLayout = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x00, 0x04, 0xf7];
+    const dawOff = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x00, 0xf7];
+
+    this.sendRawToLaunchpad(liveMode);
+    await new Promise((r) => setTimeout(r, 30));
+    this.sendRawToLaunchpad(customLayout);
+    await new Promise((r) => setTimeout(r, 30));
+    this.sendRawToLaunchpad(dawOff);
+
+    this.sendRawToLaunchpad([0xb0, 95, LPX_COLORS.DARK_GRAY]);
+    this.sendRawToLaunchpad([0xb0, 96, LPX_COLORS.DARK_GRAY]);
+    this.sendRawToLaunchpad([0xb0, 97, LPX_COLORS.AMBER_BRIGHT]);
+
+    if (this.onDawModeChanged) this.onDawModeChanged(false);
+    if (this.onModeChanged) this.onModeChanged('custom');
+  }
+
+  public enableDawMode() {
+    this.setSessionMode();
+  }
+
   public refreshDawMode() {
-    this.enableDawMode();
+    this.setSessionMode();
   }
 
   public disableDawMode() {
-    // Keep DAW Mode active for the sequencer as requested by user.
-    // If explicitly disabled, send DAW mode off:
-    if (!this.midiAccess) return;
-    const dawModeOff = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x00, 0xf7];
-    this.sendRawToLaunchpad(dawModeOff);
-    this.dawModeActive = false;
-    if (this.onDawModeChanged) {
-      this.onDawModeChanged(false);
-    }
+    this.setNoteMode();
   }
 
   /**
