@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #08090c;
+    color: #e5e7eb;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom pad lighting and silicone bevels */
+.pad-shadow {
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.08), 0 3px 6px rgba(0, 0, 0, 0.6);
+}
+
+.pad-active-glow {
+  box-shadow: 0 0 16px var(--pad-glow-color), inset 0 1px 3px rgba(255, 255, 255, 0.4);
+}
+
+.pad-playhead-halo {
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.8), inset 0 0 4px #ffffff;
+}
+
+/* Hardware bevel chassis depth */
+.chassis-bevel {
+  box-shadow: 
+    0 30px 60px -12px rgba(0, 0, 0, 0.95),
+    0 18px 36px -18px rgba(0, 0, 0, 0.8),
+    inset 0 1px 2px rgba(255, 255, 255, 0.1),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* Sleek subtle scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f1115;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #272a34;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b4050;
+}

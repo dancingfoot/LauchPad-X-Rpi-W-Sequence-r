@@ -1,0 +1,203 @@
+import React from 'react';
+import { TrackData, ViewMode } from '../../types/sequencer';
+import { midiToNoteName } from '../../utils/scales';
+
+interface PadGridProps {
+  tracks: TrackData[];
+  currentStep: number;
+  running: boolean;
+  activePage: number;
+  viewMode: ViewMode;
+  activeTrackId: number;
+  selectedStepIdx: number | null;
+  onToggleStep: (trackId: number, stepIdx: number) => void;
+  onSelectStep: (trackId: number, stepIdx: number) => void;
+  onAuditionTrack: (track: TrackData, pitch?: number) => void;
+}
+
+export const PadGrid: React.FC<PadGridProps> = ({
+  tracks,
+  currentStep,
+  running,
+  activePage,
+  viewMode,
+  activeTrackId,
+  selectedStepIdx,
+  onToggleStep,
+  onSelectStep,
+  onAuditionTrack,
+}) => {
+  const pageOffset = activePage * 8;
+  const currentStepInPage = currentStep % 8;
+  const isPlayheadInCurrentPage = Math.floor((currentStep % 16) / 8) === activePage;
+
+  if (viewMode === 'singletrack') {
+    // 64-step Single Track Mode
+    const track = tracks[activeTrackId] || tracks[0];
+    return (
+      <div className="grid grid-cols-8 grid-rows-8 gap-2 w-full h-full">
+        {Array.from({ length: 64 }).map((_, padIdx) => {
+          // Each row of 8 represents 8 steps (up to 64 steps)
+          const stepIdx = padIdx % track.length;
+          const step = track.steps[stepIdx];
+          const isPlayhead = running && (currentStep % track.length === stepIdx);
+          const isSelected = selectedStepIdx === stepIdx;
+
+          return (
+            <button
+              key={padIdx}
+              onClick={() => {
+                onToggleStep(track.id, stepIdx);
+                onSelectStep(track.id, stepIdx);
+              }}
+              style={{
+                backgroundColor: step?.active
+                  ? track.colorHex
+                  : padIdx < track.length
+                  ? track.colorDimHex
+                  : '#14161d',
+                boxShadow: step?.active
+                  ? `0 0 14px ${track.colorHex}99, inset 0 2px 4px rgba(255,255,255,0.4)`
+                  : 'inset 0 1px 3px rgba(255,255,255,0.06)',
+                borderColor: isPlayhead
+                  ? '#ffffff'
+                  : isSelected
+                  ? '#ffffff'
+                  : '#222530',
+              }}
+              className={`w-12 h-12 rounded-lg border active:scale-95 transition-all flex flex-col items-center justify-center relative cursor-pointer ${
+                isPlayhead ? 'ring-2 ring-white ring-offset-1 ring-offset-black z-10' : ''
+              } ${isSelected ? 'outline outline-2 outline-white' : ''}`}
+            >
+              <span className={`text-[9px] font-mono font-bold ${step?.active ? 'text-black' : 'text-slate-500'}`}>
+                {padIdx + 1}
+              </span>
+              {step?.active && (
+                <span className="text-[8px] font-bold text-black/80">
+                  {midiToNoteName(step.pitch)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (viewMode === 'euclidean') {
+    // Euclidean Pattern Visualization Mode
+    return (
+      <div className="grid grid-cols-8 grid-rows-8 gap-2 w-full h-full">
+        {tracks.map((track) => {
+          return Array.from({ length: 8 }).map((_, colIdx) => {
+            const stepIdx = pageOffset + colIdx;
+            const step = track.steps[stepIdx];
+            const isPlayhead = running && isPlayheadInCurrentPage && currentStepInPage === colIdx;
+            const isHit = step?.active;
+
+            return (
+              <button
+                key={`${track.id}-${colIdx}`}
+                onClick={() => {
+                  onToggleStep(track.id, stepIdx);
+                  onSelectStep(track.id, stepIdx);
+                }}
+                style={{
+                  backgroundColor: isHit ? track.colorHex : track.colorDimHex,
+                  boxShadow: isHit
+                    ? `0 0 16px ${track.colorHex}aa, inset 0 2px 4px rgba(255,255,255,0.5)`
+                    : 'inset 0 1px 2px rgba(255,255,255,0.05)',
+                  borderColor: isPlayhead ? '#ffffff' : '#232632',
+                }}
+                className={`w-12 h-12 rounded-lg border active:scale-95 transition-all flex flex-col items-center justify-center relative ${
+                  isPlayhead ? 'ring-2 ring-white ring-offset-1 ring-offset-black z-10 scale-105' : ''
+                }`}
+              >
+                <span className={`text-[9px] font-mono font-bold ${isHit ? 'text-black' : 'text-slate-400'}`}>
+                  {track.name.slice(0, 3)}
+                </span>
+                <span className={`text-[8px] font-mono ${isHit ? 'text-black/80' : 'text-slate-600'}`}>
+                  {stepIdx + 1}
+                </span>
+              </button>
+            );
+          });
+        })}
+      </div>
+    );
+  }
+
+  // Standard Multi-Track 8x8 Mode (8 Tracks x 8 Steps on active page)
+  return (
+    <div className="grid grid-cols-8 grid-rows-8 gap-2 w-full h-full">
+      {tracks.map((track) => {
+        return Array.from({ length: 8 }).map((_, colIdx) => {
+          const stepIdx = pageOffset + colIdx;
+          const step = track.steps[stepIdx];
+          const isPlayhead = running && isPlayheadInCurrentPage && currentStepInPage === colIdx;
+          const isSelected = activeTrackId === track.id && selectedStepIdx === stepIdx;
+          const isActive = step?.active;
+          const isTrackMuted = track.mute;
+
+          // Velocity modulates brightness
+          const velocityRatio = step ? step.velocity / 127 : 0.8;
+          const dynamicOpacity = 0.5 + velocityRatio * 0.5;
+
+          return (
+            <button
+              key={`${track.id}-${colIdx}`}
+              onClick={() => {
+                onToggleStep(track.id, stepIdx);
+                onSelectStep(track.id, stepIdx);
+                if (!isActive) {
+                  onAuditionTrack(track, step?.pitch);
+                }
+              }}
+              title={`${track.name} - Step ${stepIdx + 1} (${isActive ? midiToNoteName(step.pitch) : 'Off'})`}
+              style={{
+                backgroundColor: isTrackMuted
+                  ? '#1c1e26'
+                  : isActive
+                  ? track.colorHex
+                  : track.colorDimHex,
+                opacity: isTrackMuted ? 0.35 : dynamicOpacity,
+                boxShadow: isActive && !isTrackMuted
+                  ? `0 0 16px ${track.colorHex}aa, inset 0 2px 4px rgba(255,255,255,0.4)`
+                  : 'inset 0 1px 3px rgba(255,255,255,0.06)',
+                borderColor: isPlayhead
+                  ? '#ffffff'
+                  : isSelected
+                  ? '#ffffff'
+                  : '#232632',
+              }}
+              className={`w-12 h-12 rounded-lg border active:scale-95 transition-all flex flex-col items-center justify-center relative cursor-pointer ${
+                isPlayhead ? 'ring-2 ring-white ring-offset-1 ring-offset-black z-10 scale-105' : ''
+              } ${isSelected ? 'outline outline-2 outline-white' : ''}`}
+            >
+              {/* Pad step number / pitch micro-tag */}
+              <div className="flex flex-col items-center justify-center pointer-events-none">
+                <span
+                  className={`text-[9px] font-mono font-bold leading-none ${
+                    isActive ? 'text-black font-extrabold' : 'text-slate-400'
+                  }`}
+                >
+                  {colIdx + 1}
+                </span>
+                {isActive && (
+                  <span className="text-[8px] font-mono font-bold text-black/85 leading-tight mt-0.5">
+                    {midiToNoteName(step.pitch)}
+                  </span>
+                )}
+              </div>
+
+              {/* Accent dot if velocity > 100 */}
+              {isActive && step.velocity > 100 && (
+                <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
+              )}
+            </button>
+          );
+        });
+      })}
+    </div>
+  );
+};

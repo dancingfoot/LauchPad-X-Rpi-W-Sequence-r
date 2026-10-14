@@ -1,0 +1,6 @@
+{
+  "name": "Novation Launchpad X MIDI Sequencer",
+  "description": "Interactive Launchpad X hardware digital twin, 8-track polyphonic MIDI sequencer, Web Audio synth engine, and Raspberry Pi Zero W configuration station.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
