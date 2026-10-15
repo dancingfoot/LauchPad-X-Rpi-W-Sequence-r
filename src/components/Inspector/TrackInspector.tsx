@@ -1,7 +1,8 @@
 import React from 'react';
 import { TrackData } from '../../types/sequencer';
 import { generateEuclideanRhythm } from '../../utils/euclidean';
-import { Sparkles, Trash2, Shuffle, VolumeX, ShieldAlert, Cpu } from 'lucide-react';
+import { LPX_PALETTE_PRESETS } from '../../utils/colors';
+import { Sparkles, Trash2, Shuffle, VolumeX, ShieldAlert, Cpu, Palette } from 'lucide-react';
 
 interface TrackInspectorProps {
   tracks: TrackData[];
@@ -183,6 +184,46 @@ export const TrackInspector: React.FC<TrackInspectorProps> = ({
               <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Clear Track Steps
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Row Color Palette Picker (Official Novation Launchpad X RGB Palette) */}
+      <div className="mt-4 pt-3 border-t border-[#1e222d] flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Palette className="w-4 h-4 text-cyan-400" />
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+            Row Color: <span style={{ color: currentTrack.colorHex }}>{currentTrack.name}</span>
+          </span>
+          <span className="text-[11px] font-mono text-slate-400">
+            (LPX #{currentTrack.paletteIndex})
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {LPX_PALETTE_PRESETS.map((p) => {
+            const isSelected = currentTrack.paletteIndex === p.paletteIndex;
+            return (
+              <button
+                key={p.paletteIndex}
+                onClick={() =>
+                  onUpdateTrack(currentTrack.id, {
+                    colorHex: p.colorHex,
+                    colorDimHex: p.colorDimHex,
+                    paletteIndex: p.paletteIndex,
+                  })
+                }
+                title={`${p.name} (Launchpad Color Index ${p.paletteIndex})`}
+                style={{
+                  backgroundColor: p.colorHex,
+                  boxShadow: isSelected ? `0 0 10px ${p.colorHex}, 0 0 2px #fff` : 'none',
+                }}
+                className={`w-6 h-6 rounded-full transition-transform active:scale-90 cursor-pointer ${
+                  isSelected
+                    ? 'ring-2 ring-white scale-110 z-10'
+                    : 'hover:scale-105 opacity-80 hover:opacity-100'
+                }`}
+              />
+            );
+          })}
         </div>
       </div>
     </div>

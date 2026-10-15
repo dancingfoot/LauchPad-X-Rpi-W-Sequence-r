@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrackData, ViewMode } from '../../types/sequencer';
+import { TrackData, ViewMode, InactivePadStyle } from '../../types/sequencer';
 import { TopControls } from './TopControls';
 import { PadGrid } from './PadGrid';
 import { SceneButtons } from './SceneButtons';
@@ -28,6 +28,9 @@ interface ChassisProps {
   onToggleDawMode: () => void;
   currentMode: 'session' | 'note' | 'custom';
   onSelectMode: (mode: 'session' | 'note' | 'custom') => void;
+  inactivePadStyle: InactivePadStyle;
+  onInactivePadStyleChange: (style: InactivePadStyle) => void;
+  onSceneButtonAction?: (sceneIndex: number) => void;
 }
 
 export const Chassis: React.FC<ChassisProps> = ({
@@ -53,11 +56,16 @@ export const Chassis: React.FC<ChassisProps> = ({
   onToggleDawMode,
   currentMode,
   onSelectMode,
+  inactivePadStyle,
+  onInactivePadStyleChange,
+  onSceneButtonAction,
 }) => {
   return (
     <div className="flex flex-col items-center gap-3">
-      {/* Sequencer View Mode Switcher (Independent of hardware mode buttons) */}
-      <div className="flex items-center gap-1.5 p-1 bg-[#12151d] rounded-xl border border-[#202534] shadow-md">
+      {/* Sequencer Toolbar: View Mode & Inactive Pad Glow Switchers */}
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        {/* Sequencer View Mode Switcher (Independent of hardware mode buttons) */}
+        <div className="flex items-center gap-1.5 p-1 bg-[#12151d] rounded-xl border border-[#202534] shadow-md">
         <button
           onClick={() => setViewMode('multitrack')}
           className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
@@ -94,6 +102,36 @@ export const Chassis: React.FC<ChassisProps> = ({
           <span>Euclidean Engine</span>
         </button>
       </div>
+
+      {/* Inactive Pad Style Toggle: OFF vs FADED */}
+      <div className="flex items-center gap-1 p-1 bg-[#12151d] rounded-xl border border-[#202534] shadow-md">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">
+          Unused Pads:
+        </span>
+        <button
+          onClick={() => onInactivePadStyleChange('off')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            inactivePadStyle === 'off'
+              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50 shadow-sm'
+              : 'text-slate-500 hover:text-slate-300'
+          }`}
+          title="Turn unused steps completely unlit/off"
+        >
+          OFF
+        </button>
+        <button
+          onClick={() => onInactivePadStyleChange('faded')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            inactivePadStyle === 'faded'
+              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm'
+              : 'text-slate-500 hover:text-slate-300'
+          }`}
+          title="Dim unused steps in row track color"
+        >
+          FADED
+        </button>
+      </div>
+    </div>
 
       {/* Physical Launchpad X Chassis */}
       <div className="relative inline-block p-6 rounded-[28px] bg-[#12141a] border-4 border-[#0c0d12] chassis-bevel shadow-2xl select-none max-w-full">
@@ -147,6 +185,7 @@ export const Chassis: React.FC<ChassisProps> = ({
               onToggleStep={onToggleStep}
               onSelectStep={onSelectStep}
               onAuditionTrack={onAuditionTrack}
+              inactivePadStyle={inactivePadStyle}
             />
           </div>
 
@@ -158,6 +197,10 @@ export const Chassis: React.FC<ChassisProps> = ({
             setActiveTrackId={setActiveTrackId}
             onClearTrack={onClearTrack}
             onToggleMuteAll={onToggleMuteAll}
+            onSceneButtonAction={onSceneButtonAction}
+            running={running}
+            isAnyMuted={tracks.some((t) => t.mute)}
+            isAnySoloed={tracks.some((t) => t.solo)}
           />
         </div>
 

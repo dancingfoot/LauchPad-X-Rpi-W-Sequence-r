@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrackData, ViewMode } from '../../types/sequencer';
+import { TrackData, ViewMode, InactivePadStyle } from '../../types/sequencer';
 import { midiToNoteName } from '../../utils/scales';
 
 interface PadGridProps {
@@ -13,6 +13,7 @@ interface PadGridProps {
   onToggleStep: (trackId: number, stepIdx: number) => void;
   onSelectStep: (trackId: number, stepIdx: number) => void;
   onAuditionTrack: (track: TrackData, pitch?: number) => void;
+  inactivePadStyle?: InactivePadStyle;
 }
 
 export const PadGrid: React.FC<PadGridProps> = ({
@@ -26,6 +27,7 @@ export const PadGrid: React.FC<PadGridProps> = ({
   onToggleStep,
   onSelectStep,
   onAuditionTrack,
+  inactivePadStyle = 'off',
 }) => {
   const pageOffset = activePage * 8;
   const currentStepInPage = currentStep % 8;
@@ -42,6 +44,7 @@ export const PadGrid: React.FC<PadGridProps> = ({
           const step = track.steps[stepIdx];
           const isPlayhead = running && (currentStep % track.length === stepIdx);
           const isSelected = selectedStepIdx === stepIdx;
+          const isInactive = !step?.active;
 
           return (
             <button
@@ -54,22 +57,22 @@ export const PadGrid: React.FC<PadGridProps> = ({
                 backgroundColor: step?.active
                   ? track.colorHex
                   : padIdx < track.length
-                  ? track.colorDimHex
-                  : '#14161d',
+                  ? (inactivePadStyle === 'off' ? '#12141c' : track.colorDimHex)
+                  : '#0e1015',
                 boxShadow: step?.active
                   ? `0 0 14px ${track.colorHex}99, inset 0 2px 4px rgba(255,255,255,0.4)`
-                  : 'inset 0 1px 3px rgba(255,255,255,0.06)',
+                  : 'inset 0 1px 2px rgba(255,255,255,0.03)',
                 borderColor: isPlayhead
                   ? '#ffffff'
                   : isSelected
                   ? '#ffffff'
-                  : '#222530',
+                  : '#20232d',
               }}
               className={`w-12 h-12 rounded-lg border active:scale-95 transition-all flex flex-col items-center justify-center relative cursor-pointer ${
                 isPlayhead ? 'ring-2 ring-white ring-offset-1 ring-offset-black z-10' : ''
               } ${isSelected ? 'outline outline-2 outline-white' : ''}`}
             >
-              <span className={`text-[9px] font-mono font-bold ${step?.active ? 'text-black' : 'text-slate-500'}`}>
+              <span className={`text-[9px] font-mono font-bold ${step?.active ? 'text-black' : isInactive && inactivePadStyle === 'off' ? 'text-slate-600' : 'text-slate-500'}`}>
                 {padIdx + 1}
               </span>
               {step?.active && (
@@ -103,20 +106,22 @@ export const PadGrid: React.FC<PadGridProps> = ({
                   onSelectStep(track.id, stepIdx);
                 }}
                 style={{
-                  backgroundColor: isHit ? track.colorHex : track.colorDimHex,
+                  backgroundColor: isHit
+                    ? track.colorHex
+                    : (inactivePadStyle === 'off' ? '#12141c' : track.colorDimHex),
                   boxShadow: isHit
                     ? `0 0 16px ${track.colorHex}aa, inset 0 2px 4px rgba(255,255,255,0.5)`
-                    : 'inset 0 1px 2px rgba(255,255,255,0.05)',
-                  borderColor: isPlayhead ? '#ffffff' : '#232632',
+                    : 'inset 0 1px 2px rgba(255,255,255,0.03)',
+                  borderColor: isPlayhead ? '#ffffff' : '#20232d',
                 }}
                 className={`w-12 h-12 rounded-lg border active:scale-95 transition-all flex flex-col items-center justify-center relative ${
                   isPlayhead ? 'ring-2 ring-white ring-offset-1 ring-offset-black z-10 scale-105' : ''
                 }`}
               >
-                <span className={`text-[9px] font-mono font-bold ${isHit ? 'text-black' : 'text-slate-400'}`}>
+                <span className={`text-[9px] font-mono font-bold ${isHit ? 'text-black' : inactivePadStyle === 'off' ? 'text-slate-600' : 'text-slate-400'}`}>
                   {track.name.slice(0, 3)}
                 </span>
-                <span className={`text-[8px] font-mono ${isHit ? 'text-black/80' : 'text-slate-600'}`}>
+                <span className={`text-[8px] font-mono ${isHit ? 'text-black/80' : inactivePadStyle === 'off' ? 'text-slate-700' : 'text-slate-600'}`}>
                   {stepIdx + 1}
                 </span>
               </button>
@@ -159,16 +164,16 @@ export const PadGrid: React.FC<PadGridProps> = ({
                   ? '#1c1e26'
                   : isActive
                   ? track.colorHex
-                  : track.colorDimHex,
+                  : (inactivePadStyle === 'off' ? '#12141c' : track.colorDimHex),
                 opacity: isTrackMuted ? 0.35 : dynamicOpacity,
                 boxShadow: isActive && !isTrackMuted
                   ? `0 0 16px ${track.colorHex}aa, inset 0 2px 4px rgba(255,255,255,0.4)`
-                  : 'inset 0 1px 3px rgba(255,255,255,0.06)',
+                  : 'inset 0 1px 2px rgba(255,255,255,0.03)',
                 borderColor: isPlayhead
                   ? '#ffffff'
                   : isSelected
                   ? '#ffffff'
-                  : '#232632',
+                  : '#20232d',
               }}
               className={`w-12 h-12 rounded-lg border active:scale-95 transition-all flex flex-col items-center justify-center relative cursor-pointer ${
                 isPlayhead ? 'ring-2 ring-white ring-offset-1 ring-offset-black z-10 scale-105' : ''
@@ -178,7 +183,11 @@ export const PadGrid: React.FC<PadGridProps> = ({
               <div className="flex flex-col items-center justify-center pointer-events-none">
                 <span
                   className={`text-[9px] font-mono font-bold leading-none ${
-                    isActive ? 'text-black font-extrabold' : 'text-slate-400'
+                    isActive
+                      ? 'text-black font-extrabold'
+                      : inactivePadStyle === 'off'
+                      ? 'text-slate-600'
+                      : 'text-slate-400'
                   }`}
                 >
                   {colIdx + 1}

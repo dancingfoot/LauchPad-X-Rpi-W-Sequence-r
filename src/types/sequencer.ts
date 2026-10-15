@@ -26,6 +26,8 @@ export interface TrackData {
   euclideanRotation: number;
 }
 
+export type InactivePadStyle = 'off' | 'faded';
+
 export type ViewMode = 'multitrack' | 'singletrack' | 'euclidean';
 
 export interface LinkState {

@@ -32,12 +32,20 @@ class MidiManager {
   public selectedInputId: string = '';
   public currentMode: 'session' | 'note' | 'custom' = 'session';
   public dawModeActive: boolean = true;
+  public inactivePadStyle: 'off' | 'faded' = 'off';
 
   public onPadNoteReceived: ((note: number, velocity: number) => void) | null = null;
   public onControlChangeReceived: ((cc: number, value: number) => void) | null = null;
   public onDawModeChanged: ((active: boolean) => void) | null = null;
   public onModeChanged: ((mode: 'session' | 'note' | 'custom') => void) | null = null;
   public onRequestFullRefresh: (() => void) | null = null;
+
+  public setInactivePadStyle(style: 'off' | 'faded') {
+    this.inactivePadStyle = style;
+    if (this.currentMode === 'session' && this.onRequestFullRefresh) {
+      this.onRequestFullRefresh();
+    }
+  }
 
   public isSupported(): boolean {
     return typeof navigator !== 'undefined' && 'requestMIDIAccess' in navigator;
@@ -216,15 +224,23 @@ class MidiManager {
     this.currentMode = 'session';
     this.dawModeActive = true;
 
+    // 1. Ensure DAW mode is engaged: F0 00 20 29 02 0C 10 01 F7
+    // 2. Select Programmer Mode:    F0 00 20 29 02 0C 0E 01 F7
+    // 3. Set Programmer Layout:     F0 00 20 29 02 0C 00 7F F7
     const dawOn = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x01, 0xf7];
     const programmerMode = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x0e, 0x01, 0xf7];
     const programmerLayout = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x00, 0x7f, 0xf7];
 
     this.sendRawToLaunchpad(dawOn);
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => setTimeout(r, 25));
     this.sendRawToLaunchpad(programmerMode);
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => setTimeout(r, 25));
     this.sendRawToLaunchpad(programmerLayout);
+
+    // Light up Mode indicator LEDs on Top Row
+    this.sendRawToLaunchpad([0xb0, 95, LPX_COLORS.CYAN_BRIGHT]);
+    this.sendRawToLaunchpad([0xb0, 96, LPX_COLORS.DARK_GRAY]);
+    this.sendRawToLaunchpad([0xb0, 97, LPX_COLORS.DARK_GRAY]);
 
     if (this.onDawModeChanged) this.onDawModeChanged(true);
     if (this.onModeChanged) this.onModeChanged('session');
@@ -233,60 +249,58 @@ class MidiManager {
 
   /**
    * Switches Launchpad X to Live NOTE Mode:
-   * 1. Switch from Programmer to Live mode: F0 00 20 29 02 0C 0E 00 F7
-   * 2. Select Note layout (01h):             F0 00 20 29 02 0C 00 01 F7
-   * 3. Set DAW Mode OFF:                    F0 00 20 29 02 0C 10 00 F7
-   * Restores internal musical scale playing on the physical Launchpad X!
+   * 1. Switch to Live mode:        F0 00 20 29 02 0C 0E 00 F7
+   * 2. Select Note layout (01h):    F0 00 20 29 02 0C 00 01 F7
+   * Keeps DAW mode ON so DAW link is never broken, and hardware note scale is active!
    */
   public async setNoteMode() {
     if (!this.midiAccess) return;
     this.currentMode = 'note';
-    this.dawModeActive = false;
+    this.dawModeActive = true;
 
+    const dawOn = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x01, 0xf7];
     const liveMode = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x0e, 0x00, 0xf7];
     const noteLayout = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x00, 0x01, 0xf7];
-    const dawOff = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x00, 0xf7];
 
+    this.sendRawToLaunchpad(dawOn);
+    await new Promise((r) => setTimeout(r, 25));
     this.sendRawToLaunchpad(liveMode);
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => setTimeout(r, 25));
     this.sendRawToLaunchpad(noteLayout);
-    await new Promise((r) => setTimeout(r, 30));
-    this.sendRawToLaunchpad(dawOff);
 
     this.sendRawToLaunchpad([0xb0, 95, LPX_COLORS.DARK_GRAY]);
-    this.sendRawToLaunchpad([0xb0, 96, LPX_COLORS.CYAN_BRIGHT]);
+    this.sendRawToLaunchpad([0xb0, 96, LPX_COLORS.PURPLE_BRIGHT]);
     this.sendRawToLaunchpad([0xb0, 97, LPX_COLORS.DARK_GRAY]);
 
-    if (this.onDawModeChanged) this.onDawModeChanged(false);
+    if (this.onDawModeChanged) this.onDawModeChanged(true);
     if (this.onModeChanged) this.onModeChanged('note');
   }
 
   /**
    * Switches Launchpad X to Live CUSTOM Mode:
-   * 1. Switch from Programmer to Live mode: F0 00 20 29 02 0C 0E 00 F7
-   * 2. Select Custom 1 layout (04h):         F0 00 20 29 02 0C 00 04 F7
-   * 3. Set DAW Mode OFF:                    F0 00 20 29 02 0C 10 00 F7
+   * 1. Switch to Live mode:        F0 00 20 29 02 0C 0E 00 F7
+   * 2. Select Custom 1 layout:     F0 00 20 29 02 0C 00 04 F7
    */
   public async setCustomMode() {
     if (!this.midiAccess) return;
     this.currentMode = 'custom';
-    this.dawModeActive = false;
+    this.dawModeActive = true;
 
+    const dawOn = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x01, 0xf7];
     const liveMode = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x0e, 0x00, 0xf7];
     const customLayout = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x00, 0x04, 0xf7];
-    const dawOff = [0xf0, 0x00, 0x20, 0x29, 0x02, 0x0c, 0x10, 0x00, 0xf7];
 
+    this.sendRawToLaunchpad(dawOn);
+    await new Promise((r) => setTimeout(r, 25));
     this.sendRawToLaunchpad(liveMode);
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => setTimeout(r, 25));
     this.sendRawToLaunchpad(customLayout);
-    await new Promise((r) => setTimeout(r, 30));
-    this.sendRawToLaunchpad(dawOff);
 
     this.sendRawToLaunchpad([0xb0, 95, LPX_COLORS.DARK_GRAY]);
     this.sendRawToLaunchpad([0xb0, 96, LPX_COLORS.DARK_GRAY]);
     this.sendRawToLaunchpad([0xb0, 97, LPX_COLORS.AMBER_BRIGHT]);
 
-    if (this.onDawModeChanged) this.onDawModeChanged(false);
+    if (this.onDawModeChanged) this.onDawModeChanged(true);
     if (this.onModeChanged) this.onModeChanged('custom');
   }
 
@@ -343,6 +357,8 @@ class MidiManager {
     activeTrackId: number
   ) {
     if (!this.midiAccess) return;
+    // Only paint sequencer grid if Launchpad X is in Session mode!
+    if (this.currentMode !== 'session') return;
 
     const pageOffset = activePage * 8;
     const isStepInCurrentPage = Math.floor((currentStep % 16) / 8) === activePage;
@@ -361,11 +377,12 @@ class MidiManager {
 
         let color = LPX_COLORS.OFF;
         if (isPlayhead) {
-          color = step?.active ? LPX_COLORS.WHITE : LPX_COLORS.PLAYHEAD_IDLE;
+          color = step?.active ? LPX_COLORS.WHITE : (this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : LPX_COLORS.PLAYHEAD_IDLE);
         } else if (step?.active) {
           color = track.mute ? LPX_COLORS.RED_DIM : track.paletteIndex;
         } else {
-          color = track.paletteIndex + 2; // subtle dim track color
+          // Inactive pad: completely unlit (OFF) or faded track tint depending on user option
+          color = this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : (track.paletteIndex + 2);
         }
 
         this.sendRawToLaunchpad([0x90, padNote, color]);
@@ -373,23 +390,24 @@ class MidiManager {
     }
 
     // 2. Render 8 Right-Hand Scene Buttons (Notes / CC 19 to 89)
-    const scene1Col = activePage === 0 ? LPX_COLORS.CYAN_BRIGHT : LPX_COLORS.CYAN_DIM;
-    const scene2Col = activePage === 1 ? LPX_COLORS.CYAN_BRIGHT : LPX_COLORS.CYAN_DIM;
-    const scene3Col = activeTrackId < 4 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM;
-    const scene4Col = activeTrackId >= 4 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM;
-    const anyMuted = tracks.some((t) => t.mute);
-    const scene7Col = anyMuted ? LPX_COLORS.RED_BRIGHT : LPX_COLORS.RED_DIM;
-    const scene8Col = running ? LPX_COLORS.GREEN_BRIGHT : LPX_COLORS.RED_DIM;
-
+    // Named exactly as in real hardware:
+    // CC 89: Volume
+    // CC 79: Pan
+    // CC 69: Send A (Page 1)
+    // CC 59: Send B (Page 2)
+    // CC 49: Stop Clip
+    // CC 39: Mute
+    // CC 29: Solo
+    // CC 19: Record Arm
     const sceneButtons = [
-      { num: 89, color: scene1Col }, // Page 1
-      { num: 79, color: scene2Col }, // Page 2
-      { num: 69, color: scene3Col }, // Tracks 1-4
-      { num: 59, color: scene4Col }, // Tracks 5-8
-      { num: 49, color: LPX_COLORS.AMBER_DIM },
-      { num: 39, color: LPX_COLORS.AMBER_DIM },
-      { num: 29, color: scene7Col }, // Mute All
-      { num: 19, color: scene8Col }, // Play / Stop
+      { num: 89, color: LPX_COLORS.CYAN_BRIGHT }, // Volume
+      { num: 79, color: LPX_COLORS.CYAN_DIM },    // Pan
+      { num: 69, color: activePage === 0 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM }, // Send A
+      { num: 59, color: activePage === 1 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM }, // Send B
+      { num: 49, color: LPX_COLORS.RED_DIM },     // Stop Clip
+      { num: 39, color: tracks.some((t) => t.mute) ? LPX_COLORS.RED_BRIGHT : LPX_COLORS.DARK_GRAY }, // Mute
+      { num: 29, color: tracks.some((t) => t.solo) ? LPX_COLORS.GREEN_BRIGHT : LPX_COLORS.DARK_GRAY }, // Solo
+      { num: 19, color: running ? LPX_COLORS.RED_BRIGHT : LPX_COLORS.RED_DIM }, // Record Arm
     ];
 
     sceneButtons.forEach(({ num, color }) => {
@@ -427,6 +445,7 @@ class MidiManager {
     activePage: number
   ) {
     if (!this.midiAccess) return;
+    if (this.currentMode !== 'session') return;
 
     const pageOffset = activePage * 8;
     const prevStepInPage = prevStep % 8;
@@ -446,7 +465,7 @@ class MidiManager {
         const step = track.steps[stepIdx];
         const color = step?.active
           ? (track.mute ? LPX_COLORS.RED_DIM : track.paletteIndex)
-          : track.paletteIndex + 2;
+          : (this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : track.paletteIndex + 2);
         this.sendRawToLaunchpad([0x90, padNote, color]);
       }
     }
@@ -461,8 +480,8 @@ class MidiManager {
         const lpxRow = 8 - rowIdx;
         const padNote = lpxRow * 10 + (colIdx + 1);
         const step = track.steps[stepIdx];
-        // White flash on active beat, soft glowing cyan on idle beat
-        const color = step?.active ? LPX_COLORS.WHITE : LPX_COLORS.PLAYHEAD_IDLE;
+        // White flash on active beat, soft glowing cyan on idle beat (or off if user chooses)
+        const color = step?.active ? LPX_COLORS.WHITE : (this.inactivePadStyle === 'off' ? LPX_COLORS.DARK_GRAY : LPX_COLORS.PLAYHEAD_IDLE);
         this.sendRawToLaunchpad([0x90, padNote, color]);
       }
     }

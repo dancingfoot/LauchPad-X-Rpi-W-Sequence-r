@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { TrackData, ViewMode, MidiDeviceOption, LinkState } from './types/sequencer';
+import { TrackData, ViewMode, MidiDeviceOption, LinkState, InactivePadStyle } from './types/sequencer';
 import { createDefaultTracks } from './utils/defaults';
 import { generateEuclideanRhythm } from './utils/euclidean';
 import { synth } from './audio/synthEngine';
@@ -31,6 +31,7 @@ export default function App() {
   const [modalInitialTab, setModalInitialTab] = useState<'export' | 'import' | 'link' | 'setup'>('export');
   const [dawModeActive, setDawModeActive] = useState<boolean>(true);
   const [currentMode, setCurrentMode] = useState<'session' | 'note' | 'custom'>('session');
+  const [inactivePadStyle, setInactivePadStyle] = useState<InactivePadStyle>('off');
 
   // Ableton Link State
   const [linkState, setLinkState] = useState<LinkState>(linkSync.state);
@@ -130,6 +131,24 @@ export default function App() {
       togglePlayRef.current();
     }
   }, []);
+
+  // Toggle inactive pad style between 'off' (unlit) and 'faded' (dimmed)
+  const handleInactivePadStyleChange = useCallback(
+    (style: InactivePadStyle) => {
+      setInactivePadStyle(style);
+      midiManager.setInactivePadStyle(style);
+      if (midiSupported) {
+        midiManager.renderLaunchpadGrid(
+          tracksRef.current,
+          currentStepRef.current,
+          runningRef.current,
+          activePageRef.current,
+          activeTrackIdRef.current
+        );
+      }
+    },
+    [midiSupported]
+  );
 
   // Switch Modes: Session (Sequencer Grid), Note (Live Instrument), Custom (User Mapping)
   const handleSelectMode = useCallback((mode: 'session' | 'note' | 'custom') => {
@@ -590,6 +609,9 @@ export default function App() {
             onToggleDawMode={toggleDawMode}
             currentMode={currentMode}
             onSelectMode={handleSelectMode}
+            inactivePadStyle={inactivePadStyle}
+            onInactivePadStyleChange={handleInactivePadStyleChange}
+            onSceneButtonAction={handleSceneButtonAction}
           />
         </div>
 
