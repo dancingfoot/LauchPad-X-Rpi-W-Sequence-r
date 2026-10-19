@@ -16,9 +16,11 @@ class SynthEngine {
   // Callback to sync UI playhead with audio schedule
   public onStepTrigger: ((stepIndex: number) => void) | null = null;
   public onMidiEmit: ((channel: number, pitch: number, velocity: number, gateSec: number) => void) | null = null;
+  public getTracks: (() => TrackData[]) | null = null;
 
   private scheduleAheadTime: number = 0.1; // 100ms lookahead
   private lookaheadInterval: number = 25;  // 25ms interval check
+  private tracksRef: TrackData[] = [];
 
   public init() {
     if (this.ctx) return;
@@ -66,6 +68,7 @@ class SynthEngine {
 
   public start(tracks: TrackData[], currentStepIdx: number = 0) {
     this.resume();
+    this.tracksRef = tracks;
     if (this.isRunning) return;
     this.isRunning = true;
     this.currentStep = currentStepIdx;
@@ -74,7 +77,7 @@ class SynthEngine {
     }
 
     this.timerId = window.setInterval(() => {
-      this.scheduler(tracks);
+      this.scheduler();
     }, this.lookaheadInterval);
   }
 
@@ -86,11 +89,12 @@ class SynthEngine {
     }
   }
 
-  private scheduler(tracks: TrackData[]) {
+  private scheduler() {
     if (!this.ctx) return;
+    const currentTracks = this.getTracks ? this.getTracks() : this.tracksRef;
 
     while (this.nextNoteTime < this.ctx.currentTime + this.scheduleAheadTime) {
-      this.scheduleStep(this.currentStep, this.nextNoteTime, tracks);
+      this.scheduleStep(this.currentStep, this.nextNoteTime, currentTracks);
       this.advanceStep();
     }
   }

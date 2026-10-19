@@ -105,28 +105,47 @@ export default function App() {
     }
   }, [tracks, running, activePage, activeTrackId, midiSupported, dawModeActive]);
 
-  // Dedicated scene button dispatcher (supports all physical Launchpad X firmware layouts)
+  // Dedicated scene button dispatcher matching physical Launchpad X controls:
+  // 0: Volume (Cycle active track selection 1..8)
+  // 1: Pan (Cycle view mode: multitrack -> singletrack -> euclidean)
+  // 2: Send A (Page 1: Steps 1-8)
+  // 3: Send B (Page 2: Steps 9-16)
+  // 4: Stop Clip (Silence all synth voices & stop playback)
+  // 5: Mute (Toggle Mute on currently selected track)
+  // 6: Solo (Toggle Solo on currently selected track)
+  // 7: Record Arm (Play / Stop Transport)
   const handleSceneButtonAction = useCallback((sceneIndex: number) => {
     if (sceneIndex === 0) {
-      setActivePageRef.current(0);
+      setActiveTrackId((prev) => (prev + 1) % 8);
     } else if (sceneIndex === 1) {
-      setActivePageRef.current(1);
+      setViewMode((prev) =>
+        prev === 'multitrack' ? 'singletrack' : prev === 'singletrack' ? 'euclidean' : 'multitrack'
+      );
     } else if (sceneIndex === 2) {
-      setActiveTrackIdRef.current(0);
+      setActivePageRef.current(0);
+      setActivePage(0);
     } else if (sceneIndex === 3) {
-      setActiveTrackIdRef.current(4);
+      setActivePageRef.current(1);
+      setActivePage(1);
     } else if (sceneIndex === 4) {
-      setTracks((prev) => {
-        const anyMuted = prev.slice(0, 4).some((t) => t.mute);
-        return prev.map((t) => (t.id < 4 ? { ...t, mute: !anyMuted } : t));
-      });
+      synth.stop();
+      setRunning(false);
+      runningRef.current = false;
+      midiManager.renderLaunchpadGrid(
+        tracksRef.current,
+        0,
+        false,
+        activePageRef.current,
+        activeTrackIdRef.current
+      );
     } else if (sceneIndex === 5) {
-      setTracks((prev) => {
-        const anyMuted = prev.slice(4, 8).some((t) => t.mute);
-        return prev.map((t) => (t.id >= 4 ? { ...t, mute: !anyMuted } : t));
-      });
+      setTracks((prev) =>
+        prev.map((t) => (t.id === activeTrackIdRef.current ? { ...t, mute: !t.mute } : t))
+      );
     } else if (sceneIndex === 6) {
-      toggleMuteAllRef.current();
+      setTracks((prev) =>
+        prev.map((t) => (t.id === activeTrackIdRef.current ? { ...t, solo: !t.solo } : t))
+      );
     } else if (sceneIndex === 7) {
       togglePlayRef.current();
     }
@@ -176,6 +195,7 @@ export default function App() {
     synth.setBpm(bpm);
     synth.setSwing(swing);
     synth.setMasterVolume(volume);
+    synth.getTracks = () => tracksRef.current;
 
     // High-resolution audio clock step trigger:
     // Uses ultra-fast delta playhead tick (only 16 pad updates, never locks USB buffers)
@@ -612,6 +632,7 @@ export default function App() {
             inactivePadStyle={inactivePadStyle}
             onInactivePadStyleChange={handleInactivePadStyleChange}
             onSceneButtonAction={handleSceneButtonAction}
+            onUpdateTrack={updateTrack}
           />
         </div>
 

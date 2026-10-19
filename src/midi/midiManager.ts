@@ -399,15 +399,21 @@ class MidiManager {
     // CC 39: Mute
     // CC 29: Solo
     // CC 19: Record Arm
+    const activeTrack = tracks[activeTrackId];
+    const isCurMuted = activeTrack?.mute ?? false;
+    const isCurSoloed = activeTrack?.solo ?? false;
+    const isAnyMuted = tracks.some((t) => t.mute);
+    const isAnySoloed = tracks.some((t) => t.solo);
+
     const sceneButtons = [
-      { num: 89, color: LPX_COLORS.CYAN_BRIGHT }, // Volume
-      { num: 79, color: LPX_COLORS.CYAN_DIM },    // Pan
+      { num: 89, color: LPX_COLORS.CYAN_DIM }, // Volume
+      { num: 79, color: LPX_COLORS.CYAN_DIM }, // Pan
       { num: 69, color: activePage === 0 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM }, // Send A
       { num: 59, color: activePage === 1 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM }, // Send B
-      { num: 49, color: LPX_COLORS.RED_DIM },     // Stop Clip
-      { num: 39, color: tracks.some((t) => t.mute) ? LPX_COLORS.RED_BRIGHT : LPX_COLORS.DARK_GRAY }, // Mute
-      { num: 29, color: tracks.some((t) => t.solo) ? LPX_COLORS.GREEN_BRIGHT : LPX_COLORS.DARK_GRAY }, // Solo
-      { num: 19, color: running ? LPX_COLORS.RED_BRIGHT : LPX_COLORS.RED_DIM }, // Record Arm
+      { num: 49, color: running ? LPX_COLORS.AMBER_BRIGHT : LPX_COLORS.DARK_GRAY },             // Stop Clip
+      { num: 39, color: isCurMuted ? LPX_COLORS.RED_BRIGHT : (isAnyMuted ? LPX_COLORS.RED_DIM : LPX_COLORS.DARK_GRAY) }, // Mute
+      { num: 29, color: isCurSoloed ? LPX_COLORS.GREEN_BRIGHT : (isAnySoloed ? LPX_COLORS.GREEN_DIM : LPX_COLORS.DARK_GRAY) }, // Solo
+      { num: 19, color: running ? LPX_COLORS.RED_BRIGHT : LPX_COLORS.RED_DIM },                // Record Arm
     ];
 
     sceneButtons.forEach(({ num, color }) => {
@@ -427,8 +433,8 @@ class MidiManager {
     this.sendRawToLaunchpad([0xb0, 93, cc93Col]);
     this.sendRawToLaunchpad([0xb0, 94, cc94Col]);
     this.sendRawToLaunchpad([0xb0, 95, cc95Col]);
-    this.sendRawToLaunchpad([0xb0, 96, LPX_COLORS.GRAY]);
-    this.sendRawToLaunchpad([0xb0, 97, LPX_COLORS.GRAY]);
+    this.sendRawToLaunchpad([0xb0, 96, LPX_COLORS.DARK_GRAY]);
+    this.sendRawToLaunchpad([0xb0, 97, LPX_COLORS.DARK_GRAY]);
     this.sendRawToLaunchpad([0xb0, 98, cc98Col]);
   }
 

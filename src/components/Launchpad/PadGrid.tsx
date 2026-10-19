@@ -39,26 +39,28 @@ export const PadGrid: React.FC<PadGridProps> = ({
     return (
       <div className="grid grid-cols-8 grid-rows-8 gap-2 w-full h-full">
         {Array.from({ length: 64 }).map((_, padIdx) => {
-          // Each row of 8 represents 8 steps (up to 64 steps)
-          const stepIdx = padIdx % track.length;
-          const step = track.steps[stepIdx];
-          const isPlayhead = running && (currentStep % track.length === stepIdx);
-          const isSelected = selectedStepIdx === stepIdx;
+          const isWithinLength = padIdx < track.length;
+          const step = isWithinLength ? track.steps[padIdx] : undefined;
+          const isPlayhead = running && (currentStep % track.length === padIdx);
+          const isSelected = selectedStepIdx === padIdx;
           const isInactive = !step?.active;
 
           return (
             <button
               key={padIdx}
+              disabled={!isWithinLength}
               onClick={() => {
-                onToggleStep(track.id, stepIdx);
-                onSelectStep(track.id, stepIdx);
+                if (isWithinLength) {
+                  onToggleStep(track.id, padIdx);
+                  onSelectStep(track.id, padIdx);
+                }
               }}
               style={{
                 backgroundColor: step?.active
                   ? track.colorHex
-                  : padIdx < track.length
+                  : isWithinLength
                   ? (inactivePadStyle === 'off' ? '#12141c' : track.colorDimHex)
-                  : '#0e1015',
+                  : '#0b0c10',
                 boxShadow: step?.active
                   ? `0 0 14px ${track.colorHex}99, inset 0 2px 4px rgba(255,255,255,0.4)`
                   : 'inset 0 1px 2px rgba(255,255,255,0.03)',
@@ -67,8 +69,11 @@ export const PadGrid: React.FC<PadGridProps> = ({
                   : isSelected
                   ? '#ffffff'
                   : '#20232d',
+                opacity: isWithinLength ? 1 : 0.35,
               }}
-              className={`w-12 h-12 rounded-lg border active:scale-95 transition-all flex flex-col items-center justify-center relative cursor-pointer ${
+              className={`w-12 h-12 rounded-lg border active:scale-95 transition-all flex flex-col items-center justify-center relative ${
+                isWithinLength ? 'cursor-pointer' : 'cursor-not-allowed'
+              } ${
                 isPlayhead ? 'ring-2 ring-white ring-offset-1 ring-offset-black z-10' : ''
               } ${isSelected ? 'outline outline-2 outline-white' : ''}`}
             >

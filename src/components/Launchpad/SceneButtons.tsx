@@ -5,12 +5,15 @@ interface SceneButtonsProps {
   setActivePage: (page: number) => void;
   activeTrackId: number;
   setActiveTrackId: (id: number) => void;
-  onClearTrack: (id: number) => void;
-  onToggleMuteAll: () => void;
+  onClearTrack?: (id: number) => void;
+  onToggleMuteAll?: () => void;
   onSceneButtonAction?: (sceneIndex: number) => void;
   running?: boolean;
   isAnyMuted?: boolean;
   isAnySoloed?: boolean;
+  activeTrackMuted?: boolean;
+  activeTrackSoloed?: boolean;
+  viewMode?: string;
 }
 
 export const SceneButtons: React.FC<SceneButtonsProps> = ({
@@ -24,6 +27,9 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
   running = false,
   isAnyMuted = false,
   isAnySoloed = false,
+  activeTrackMuted = false,
+  activeTrackSoloed = false,
+  viewMode = 'multitrack',
 }) => {
   // 8 circular scene buttons on the right edge of Novation Launchpad X
   // Labeled identically to the physical hardware (Row 8 down to Row 1 / CC 89 down to CC 19):
@@ -41,10 +47,11 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       name: 'Volume',
       shortName: 'VOLUME',
       color: '#00e5ff',
-      active: true,
-      tooltip: 'Volume (Mixer mode)',
+      active: false,
+      tooltip: 'Volume: Cycle active track selection (Track 1..8)',
       action: () => {
         if (onSceneButtonAction) onSceneButtonAction(0);
+        else setActiveTrackId((activeTrackId + 1) % 8);
       },
     },
     {
@@ -52,8 +59,8 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       name: 'Pan',
       shortName: 'PAN',
       color: '#40c4ff',
-      active: false,
-      tooltip: 'Pan (Mixer mode)',
+      active: viewMode !== 'multitrack',
+      tooltip: 'Pan: Cycle sequencer view modes (Grid / 64-Step Melodic / Euclidean)',
       action: () => {
         if (onSceneButtonAction) onSceneButtonAction(1);
       },
@@ -64,7 +71,7 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       shortName: 'SEND A',
       color: '#ffd000',
       active: activePage === 0,
-      tooltip: 'Send A (Steps 1-8 / Page 1)',
+      tooltip: 'Send A: Bank 1 / Page 1 (Steps 1-8)',
       action: () => {
         setActivePage(0);
         if (onSceneButtonAction) onSceneButtonAction(2);
@@ -76,7 +83,7 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       shortName: 'SEND B',
       color: '#ff9100',
       active: activePage === 1,
-      tooltip: 'Send B (Steps 9-16 / Page 2)',
+      tooltip: 'Send B: Bank 2 / Page 2 (Steps 9-16)',
       action: () => {
         setActivePage(1);
         if (onSceneButtonAction) onSceneButtonAction(3);
@@ -87,8 +94,8 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       name: 'Stop Clip',
       shortName: 'STOP CLIP',
       color: '#ff3344',
-      active: false,
-      tooltip: 'Stop Clip (Silence current notes / Stop)',
+      active: running,
+      tooltip: 'Stop Clip: Panic / Silence all voices and stop playback',
       action: () => {
         if (onSceneButtonAction) onSceneButtonAction(4);
       },
@@ -98,11 +105,11 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       name: 'Mute',
       shortName: 'MUTE',
       color: '#ff3344',
-      active: isAnyMuted,
-      tooltip: 'Mute (Toggle Mute on selected track or all)',
+      active: activeTrackMuted || isAnyMuted,
+      tooltip: `Mute: Toggle mute on selected track (Track ${activeTrackId + 1})`,
       action: () => {
         if (onSceneButtonAction) onSceneButtonAction(5);
-        else onToggleMuteAll();
+        else if (onToggleMuteAll) onToggleMuteAll();
       },
     },
     {
@@ -110,8 +117,8 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       name: 'Solo',
       shortName: 'SOLO',
       color: '#00e676',
-      active: isAnySoloed,
-      tooltip: 'Solo (Toggle Solo on selected track)',
+      active: activeTrackSoloed || isAnySoloed,
+      tooltip: `Solo: Toggle solo on selected track (Track ${activeTrackId + 1})`,
       action: () => {
         if (onSceneButtonAction) onSceneButtonAction(6);
       },
@@ -122,7 +129,7 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       shortName: 'REC ARM',
       color: '#ff1744',
       active: running,
-      tooltip: 'Record Arm (Play / Stop Transport)',
+      tooltip: 'Record Arm: Play / Stop sequencer transport',
       action: () => {
         if (onSceneButtonAction) onSceneButtonAction(7);
       },
