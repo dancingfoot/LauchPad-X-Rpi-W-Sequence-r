@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Square, Sliders, HardDrive, Usb, Volume2, Radio } from 'lucide-react';
+import { Play, Square, Sliders, HardDrive, Usb, Volume2, Radio, FileText } from 'lucide-react';
 import { MidiDeviceOption, LinkState } from '../../types/sequencer';
 
 interface HeaderBarProps {
@@ -217,8 +217,21 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           className="px-3 py-2 bg-[#1b1f2b] hover:bg-[#252b3c] text-slate-200 border border-[#2d3448] rounded-xl text-xs font-semibold transition-all flex items-center gap-2 active:scale-95"
         >
           <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Pi Zero W / Config</span>
+          <span>Pi Zero W</span>
         </button>
+
+        {/* User Manual PDF Download */}
+        <a
+          href="./Launchpad_X_User_Manual.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          download="Launchpad_X_User_Manual.pdf"
+          title="Download the full Launchpad X Hardware & Sequencer User Manual (PDF)"
+          className="px-3 py-2 bg-[#1b1f2b] hover:bg-[#252b3c] text-cyan-300 hover:text-cyan-200 border border-[#2d3448] rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 shadow-sm"
+        >
+          <FileText className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Manual (PDF)</span>
+        </a>
       </div>
     </header>
   );
