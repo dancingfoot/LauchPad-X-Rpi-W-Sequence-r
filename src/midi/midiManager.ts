@@ -1,4 +1,4 @@
-import { MidiDeviceOption, TrackData } from '../types/sequencer';
+import { MidiDeviceOption, TrackData, ViewMode } from '../types/sequencer';
 
 export const LPX_COLORS = {
   OFF: 0,
@@ -33,6 +33,7 @@ class MidiManager {
   public currentMode: 'session' | 'note' | 'custom' = 'session';
   public dawModeActive: boolean = true;
   public inactivePadStyle: 'off' | 'faded' = 'off';
+  public viewMode: ViewMode = 'multitrack';
   private lastModeSwitchTime: number = 0;
 
   public onPadNoteReceived: ((note: number, velocity: number) => void) | null = null;
@@ -365,51 +366,83 @@ class MidiManager {
     const currentStepInPage = currentStep % 8;
 
     // 1. Render all 64 Grid Pads (Rows 1..8, Cols 1..8)
-    for (let rowIdx = 0; rowIdx < 8; rowIdx++) {
-      const track = tracks[rowIdx];
-      const lpxRow = 8 - rowIdx;
+    if (this.viewMode === 'sendA' || this.viewMode === 'sendB') {
+      const trackOffset = this.viewMode === 'sendA' ? 0 : 4;
+      for (let pairIdx = 0; pairIdx < 4; pairIdx++) {
+        const track = tracks[trackOffset + pairIdx];
+        if (!track) continue;
 
-      for (let colIdx = 0; colIdx < 8; colIdx++) {
-        const stepIdx = pageOffset + colIdx;
-        const padNote = lpxRow * 10 + (colIdx + 1);
-        const step = track.steps[stepIdx];
-        const isPlayhead = running && isStepInCurrentPage && currentStepInPage === colIdx;
+        for (let rowPart = 0; rowPart < 2; rowPart++) {
+          const lpxRow = 8 - (pairIdx * 2 + rowPart);
+          for (let colIdx = 0; colIdx < 8; colIdx++) {
+            const stepIdx = rowPart * 8 + colIdx;
+            const padNote = lpxRow * 10 + (colIdx + 1);
+            const step = track.steps[stepIdx];
+            const isPlayhead = running && (currentStep % track.length === stepIdx);
 
-        let color = LPX_COLORS.OFF;
-        if (isPlayhead) {
-          color = step?.active ? LPX_COLORS.WHITE : (this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : LPX_COLORS.PLAYHEAD_IDLE);
-        } else if (step?.active) {
-          color = track.mute ? LPX_COLORS.RED_DIM : track.paletteIndex;
-        } else {
-          // Inactive pad: completely unlit (OFF) or faded track tint depending on user option
-          color = this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : (track.paletteIndex + 2);
+            let color = LPX_COLORS.OFF;
+            if (isPlayhead) {
+              color = step?.active ? LPX_COLORS.WHITE : (this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : LPX_COLORS.PLAYHEAD_IDLE);
+            } else if (step?.active) {
+              color = track.mute ? LPX_COLORS.RED_DIM : track.paletteIndex;
+            } else {
+              color = this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : (track.paletteIndex + 2);
+            }
+
+            this.sendRawToLaunchpad([0x90, padNote, color]);
+          }
         }
+      }
+    } else {
+      const pageOffset = activePage * 8;
+      const isStepInCurrentPage = Math.floor((currentStep % 16) / 8) === activePage;
+      const currentStepInPage = currentStep % 8;
 
-        this.sendRawToLaunchpad([0x90, padNote, color]);
+      for (let rowIdx = 0; rowIdx < 8; rowIdx++) {
+        const track = tracks[rowIdx];
+        const lpxRow = 8 - rowIdx;
+
+        for (let colIdx = 0; colIdx < 8; colIdx++) {
+          const stepIdx = pageOffset + colIdx;
+          const padNote = lpxRow * 10 + (colIdx + 1);
+          const step = track.steps[stepIdx];
+          const isPlayhead = running && isStepInCurrentPage && currentStepInPage === colIdx;
+
+          let color = LPX_COLORS.OFF;
+          if (isPlayhead) {
+            color = step?.active ? LPX_COLORS.WHITE : (this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : LPX_COLORS.PLAYHEAD_IDLE);
+          } else if (step?.active) {
+            color = track.mute ? LPX_COLORS.RED_DIM : track.paletteIndex;
+          } else {
+            color = this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : (track.paletteIndex + 2);
+          }
+
+          this.sendRawToLaunchpad([0x90, padNote, color]);
+        }
       }
     }
 
     // 2. Render 8 Right-Hand Scene Buttons (Notes / CC 19 to 89)
-    // Named exactly as in real hardware:
-    // CC 89: Volume
-    // CC 79: Pan
-    // CC 69: Send A (Page 1)
-    // CC 59: Send B (Page 2)
-    // CC 49: Stop Clip
-    // CC 39: Mute
-    // CC 29: Solo
-    // CC 19: Record Arm
     const activeTrack = tracks[activeTrackId];
     const isCurMuted = activeTrack?.mute ?? false;
     const isCurSoloed = activeTrack?.solo ?? false;
     const isAnyMuted = tracks.some((t) => t.mute);
     const isAnySoloed = tracks.some((t) => t.solo);
 
+    const isSendA = this.viewMode === 'sendA';
+    const isSendB = this.viewMode === 'sendB';
+    const sendAColor = isSendA
+      ? LPX_COLORS.YELLOW_BRIGHT
+      : (this.viewMode === 'multitrack' && activePage === 0 ? LPX_COLORS.YELLOW_DIM : LPX_COLORS.DARK_GRAY);
+    const sendBColor = isSendB
+      ? LPX_COLORS.AMBER_BRIGHT
+      : (this.viewMode === 'multitrack' && activePage === 1 ? LPX_COLORS.YELLOW_DIM : LPX_COLORS.DARK_GRAY);
+
     const sceneButtons = [
       { num: 89, color: LPX_COLORS.CYAN_DIM }, // Volume
       { num: 79, color: LPX_COLORS.CYAN_DIM }, // Pan
-      { num: 69, color: activePage === 0 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM }, // Send A
-      { num: 59, color: activePage === 1 ? LPX_COLORS.YELLOW_BRIGHT : LPX_COLORS.YELLOW_DIM }, // Send B
+      { num: 69, color: sendAColor },          // Send A
+      { num: 59, color: sendBColor },          // Send B
       { num: 49, color: running ? LPX_COLORS.AMBER_BRIGHT : LPX_COLORS.DARK_GRAY },             // Stop Clip
       { num: 39, color: isCurMuted ? LPX_COLORS.RED_BRIGHT : (isAnyMuted ? LPX_COLORS.RED_DIM : LPX_COLORS.DARK_GRAY) }, // Mute
       { num: 29, color: isCurSoloed ? LPX_COLORS.GREEN_BRIGHT : (isAnySoloed ? LPX_COLORS.GREEN_DIM : LPX_COLORS.DARK_GRAY) }, // Solo
@@ -440,8 +473,6 @@ class MidiManager {
 
   /**
    * Ultra-fast delta update executed on every 16th note tick.
-   * Only updates the 8 pads in the previous column and 8 pads in the new column.
-   * Zero USB congestion, zero dropped frames, crystal clear playhead sweep.
    */
   public updatePlayheadTick(
     tracks: TrackData[],
@@ -452,6 +483,48 @@ class MidiManager {
   ) {
     if (!this.midiAccess) return;
     if (this.currentMode !== 'session') return;
+
+    if (this.viewMode === 'sendA' || this.viewMode === 'sendB') {
+      const trackOffset = this.viewMode === 'sendA' ? 0 : 4;
+      const prevRowPart = Math.floor((prevStep % 16) / 8);
+      const prevColIdx = prevStep % 8;
+      const currRowPart = Math.floor((currentStep % 16) / 8);
+      const currColIdx = currentStep % 8;
+
+      // 1. Restore previous step
+      if (prevStep !== currentStep) {
+        for (let pairIdx = 0; pairIdx < 4; pairIdx++) {
+          const track = tracks[trackOffset + pairIdx];
+          if (!track) continue;
+          const lpxRow = 8 - (pairIdx * 2 + prevRowPart);
+          const padNote = lpxRow * 10 + (prevColIdx + 1);
+          const prevStepIdx = prevRowPart * 8 + prevColIdx;
+          const step = track.steps[prevStepIdx];
+          const color = step?.active
+            ? (track.mute ? LPX_COLORS.RED_DIM : track.paletteIndex)
+            : (this.inactivePadStyle === 'off' ? LPX_COLORS.OFF : track.paletteIndex + 2);
+          this.sendRawToLaunchpad([0x90, padNote, color]);
+        }
+      }
+
+      // 2. Light up new playhead step
+      if (running) {
+        for (let pairIdx = 0; pairIdx < 4; pairIdx++) {
+          const track = tracks[trackOffset + pairIdx];
+          if (!track) continue;
+          const lpxRow = 8 - (pairIdx * 2 + currRowPart);
+          const padNote = lpxRow * 10 + (currColIdx + 1);
+          const currStepIdx = currRowPart * 8 + currColIdx;
+          const step = track.steps[currStepIdx];
+          const color = step?.active ? LPX_COLORS.WHITE : (this.inactivePadStyle === 'off' ? LPX_COLORS.DARK_GRAY : LPX_COLORS.PLAYHEAD_IDLE);
+          this.sendRawToLaunchpad([0x90, padNote, color]);
+        }
+      }
+
+      // 3. Keep Transport LED Green while running
+      this.sendRawToLaunchpad([0xb0, 98, running ? LPX_COLORS.GREEN_BRIGHT : LPX_COLORS.RED_DIM]);
+      return;
+    }
 
     const pageOffset = activePage * 8;
     const prevStepInPage = prevStep % 8;

@@ -28,7 +28,7 @@ export interface TrackData {
 
 export type InactivePadStyle = 'off' | 'faded';
 
-export type ViewMode = 'multitrack' | 'singletrack' | 'euclidean';
+export type ViewMode = 'multitrack' | 'singletrack' | 'euclidean' | 'sendA' | 'sendB';
 
 export interface LinkState {
   enabled: boolean;

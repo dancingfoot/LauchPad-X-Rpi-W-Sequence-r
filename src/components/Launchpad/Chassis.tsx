@@ -70,41 +70,70 @@ export const Chassis: React.FC<ChassisProps> = ({
       {/* Sequencer Toolbar: View Mode, Inactive Pad Glow, and Row Colors */}
       <div className="flex flex-wrap items-center justify-center gap-3">
         {/* Sequencer View Mode Switcher (Independent of hardware mode buttons) */}
-        <div className="flex items-center gap-1.5 p-1 bg-[#12151d] rounded-xl border border-[#202534] shadow-md">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#12151d] rounded-xl border border-[#202534] shadow-md">
           <button
             onClick={() => setViewMode('multitrack')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
               viewMode === 'multitrack'
                 ? 'bg-[#00e5ff] text-black shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
+            title="8-Track Step Sequencer (All 8 instruments, 8 steps per page)"
           >
             <Grid3X3 className="w-3.5 h-3.5" />
             <span>8-Track Grid</span>
           </button>
 
           <button
-            onClick={() => setViewMode('singletrack')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-              viewMode === 'singletrack'
+            onClick={() => setViewMode(viewMode === 'sendA' ? 'multitrack' : 'sendA')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              viewMode === 'sendA'
                 ? 'bg-[#ffd000] text-black shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
+            title="Send A: 16-Step Melodic view for Instruments 1 to 4 (Click again to return to 8-track grid)"
+          >
+            <span className="w-2 h-2 rounded-full bg-yellow-400" />
+            <span>Send A: Inst 1-4</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode(viewMode === 'sendB' ? 'multitrack' : 'sendB')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              viewMode === 'sendB'
+                ? 'bg-[#ff9100] text-black shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+            title="Send B: 16-Step Melodic view for Instruments 5 to 8 (Click again to return to 8-track grid)"
+          >
+            <span className="w-2 h-2 rounded-full bg-orange-500" />
+            <span>Send B: Inst 5-8</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode('singletrack')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              viewMode === 'singletrack'
+                ? 'bg-[#2979ff] text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+            title="64-Step Single Track Melodic View"
           >
             <Music className="w-3.5 h-3.5" />
-            <span>64-Step Melodic</span>
+            <span>64-Step Single</span>
           </button>
 
           <button
             onClick={() => setViewMode('euclidean')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
               viewMode === 'euclidean'
                 ? 'bg-[#d500f9] text-white shadow-md'
                 : 'text-slate-400 hover:text-white'
             }`}
+            title="Euclidean Algorithmic Rhythm Generator"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Euclidean Engine</span>
+            <span>Euclidean</span>
           </button>
         </div>
 
@@ -189,80 +218,177 @@ export const Chassis: React.FC<ChassisProps> = ({
         <div className="flex gap-3 bg-[#0a0b0e] p-3 rounded-2xl border border-[#1e222d] shadow-inner items-start relative">
           {/* Left Row Track Indicators & Quick Color Pickers */}
           <div className="flex flex-col gap-2 justify-between">
-            {tracks.map((track) => {
-              const isSelected = activeTrackId === track.id;
-              const isPickerOpen = colorPickerTrackId === track.id;
-              return (
-                <div key={track.id} className="relative">
-                  <div
-                    onClick={() => setActiveTrackId(track.id)}
-                    className={`w-16 h-12 rounded-lg border flex flex-col items-center justify-center p-1 cursor-pointer transition-all ${
-                      isSelected
-                        ? 'bg-white/10 border-white/40 shadow-sm'
-                        : 'bg-[#13161f] border-[#202534] hover:bg-[#1a1e2b]'
-                    }`}
-                    title={`${track.name} (Track ${track.id + 1}) - Click to select, click color dot to change row color`}
-                  >
-                    <div className="flex items-center gap-1 leading-none mb-0.5">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setColorPickerTrackId(isPickerOpen ? null : track.id);
-                        }}
-                        style={{ backgroundColor: track.colorHex }}
-                        className="w-3 h-3 rounded-full hover:scale-125 transition-transform ring-1 ring-white/30 cursor-pointer"
-                        title="Click to change this row's color"
-                      />
-                      <span className="text-[8px] font-mono font-bold text-slate-300">
-                        T{track.id + 1}
-                      </span>
-                    </div>
-                    <span className="text-[7.5px] font-bold text-slate-400 uppercase truncate max-w-full">
-                      {track.name.split(' ')[0]}
-                    </span>
-                  </div>
-
-                  {/* Inline Color Palette Popover for this row */}
-                  {isPickerOpen && (
-                    <div className="absolute left-full top-0 ml-2 z-50 bg-[#161922] border border-[#2e3549] rounded-xl p-2.5 shadow-2xl flex flex-col gap-2 w-48">
-                      <div className="flex items-center justify-between border-b border-[#242b3b] pb-1.5">
-                        <span className="text-[10px] font-bold text-white uppercase tracking-wider">
-                          Row {track.id + 1} Color
-                        </span>
-                        <button
-                          onClick={() => setColorPickerTrackId(null)}
-                          className="text-slate-400 hover:text-white p-0.5"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-7 gap-1.5">
-                        {LPX_PALETTE_PRESETS.map((p) => (
+            {viewMode === 'sendA' || viewMode === 'sendB'
+              ? (viewMode === 'sendA' ? tracks.slice(0, 4) : tracks.slice(4, 8)).map((track) => {
+                  const isSelected = activeTrackId === track.id;
+                  const isPickerOpen = colorPickerTrackId === track.id;
+                  return (
+                    <div key={track.id} className="flex flex-col gap-2 relative">
+                      {/* Row Part 1: Steps 1-8 */}
+                      <div
+                        onClick={() => setActiveTrackId(track.id)}
+                        className={`w-16 h-12 rounded-lg border flex flex-col items-center justify-center p-1 cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-white/10 border-white/40 shadow-sm'
+                            : 'bg-[#13161f] border-[#202534] hover:bg-[#1a1e2b]'
+                        }`}
+                        title={`${track.name} (Steps 1-8) - Click to select, click color dot to change row color`}
+                      >
+                        <div className="flex items-center gap-1 leading-none mb-0.5">
                           <button
-                            key={p.paletteIndex}
-                            onClick={() => {
-                              if (onUpdateTrack) {
-                                onUpdateTrack(track.id, {
-                                  colorHex: p.colorHex,
-                                  colorDimHex: p.colorDimHex,
-                                  paletteIndex: p.paletteIndex,
-                                });
-                              }
-                              setColorPickerTrackId(null);
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setColorPickerTrackId(isPickerOpen ? null : track.id);
                             }}
-                            title={`${p.name} (LPX #${p.paletteIndex})`}
-                            style={{ backgroundColor: p.colorHex }}
-                            className={`w-5 h-5 rounded-full hover:scale-110 active:scale-95 transition-all ring-1 ring-white/20 ${
-                              track.paletteIndex === p.paletteIndex ? 'ring-2 ring-white scale-110' : ''
-                            }`}
+                            style={{ backgroundColor: track.colorHex }}
+                            className="w-3 h-3 rounded-full hover:scale-125 transition-transform ring-1 ring-white/30 cursor-pointer"
+                            title="Click to change this row's color"
                           />
-                        ))}
+                          <span className="text-[8px] font-mono font-bold text-slate-300">
+                            T{track.id + 1}
+                          </span>
+                        </div>
+                        <span className="text-[7.5px] font-bold text-slate-400 uppercase truncate max-w-full">
+                          {track.name.split(' ')[0]}
+                        </span>
+                        <span className="text-[6.5px] font-mono text-cyan-400 leading-none">1-8</span>
                       </div>
+
+                      {/* Row Part 2: Steps 9-16 */}
+                      <div
+                        onClick={() => setActiveTrackId(track.id)}
+                        className={`w-16 h-12 rounded-lg border flex flex-col items-center justify-center p-1 cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-white/10 border-white/40 shadow-sm'
+                            : 'bg-[#13161f] border-[#202534] hover:bg-[#1a1e2b]'
+                        }`}
+                        title={`${track.name} (Steps 9-16) - Click to select`}
+                      >
+                        <div className="flex items-center gap-1 leading-none mb-0.5">
+                          <span className="text-[8px] font-mono font-bold text-slate-400">
+                            T{track.id + 1}
+                          </span>
+                        </div>
+                        <span className="text-[7.5px] font-mono font-bold text-amber-400 leading-none">
+                          9-16
+                        </span>
+                      </div>
+
+                      {/* Inline Color Palette Popover for this row */}
+                      {isPickerOpen && (
+                        <div className="absolute left-full top-0 ml-2 z-50 bg-[#161922] border border-[#2e3549] rounded-xl p-2.5 shadow-2xl flex flex-col gap-2 w-48">
+                          <div className="flex items-center justify-between border-b border-[#242b3b] pb-1.5">
+                            <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                              Track {track.id + 1} Color
+                            </span>
+                            <button
+                              onClick={() => setColorPickerTrackId(null)}
+                              className="text-slate-400 hover:text-white p-0.5"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1.5">
+                            {LPX_PALETTE_PRESETS.map((p) => (
+                              <button
+                                key={p.paletteIndex}
+                                onClick={() => {
+                                  if (onUpdateTrack) {
+                                    onUpdateTrack(track.id, {
+                                      colorHex: p.colorHex,
+                                      colorDimHex: p.colorDimHex,
+                                      paletteIndex: p.paletteIndex,
+                                    });
+                                  }
+                                  setColorPickerTrackId(null);
+                                }}
+                                title={`${p.name} (LPX #${p.paletteIndex})`}
+                                style={{ backgroundColor: p.colorHex }}
+                                className={`w-5 h-5 rounded-full hover:scale-110 active:scale-95 transition-all ring-1 ring-white/20 ${
+                                  track.paletteIndex === p.paletteIndex ? 'ring-2 ring-white scale-110' : ''
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })
+              : tracks.map((track) => {
+                  const isSelected = activeTrackId === track.id;
+                  const isPickerOpen = colorPickerTrackId === track.id;
+                  return (
+                    <div key={track.id} className="relative">
+                      <div
+                        onClick={() => setActiveTrackId(track.id)}
+                        className={`w-16 h-12 rounded-lg border flex flex-col items-center justify-center p-1 cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-white/10 border-white/40 shadow-sm'
+                            : 'bg-[#13161f] border-[#202534] hover:bg-[#1a1e2b]'
+                        }`}
+                        title={`${track.name} (Track ${track.id + 1}) - Click to select, click color dot to change row color`}
+                      >
+                        <div className="flex items-center gap-1 leading-none mb-0.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setColorPickerTrackId(isPickerOpen ? null : track.id);
+                            }}
+                            style={{ backgroundColor: track.colorHex }}
+                            className="w-3 h-3 rounded-full hover:scale-125 transition-transform ring-1 ring-white/30 cursor-pointer"
+                            title="Click to change this row's color"
+                          />
+                          <span className="text-[8px] font-mono font-bold text-slate-300">
+                            T{track.id + 1}
+                          </span>
+                        </div>
+                        <span className="text-[7.5px] font-bold text-slate-400 uppercase truncate max-w-full">
+                          {track.name.split(' ')[0]}
+                        </span>
+                      </div>
+
+                      {/* Inline Color Palette Popover for this row */}
+                      {isPickerOpen && (
+                        <div className="absolute left-full top-0 ml-2 z-50 bg-[#161922] border border-[#2e3549] rounded-xl p-2.5 shadow-2xl flex flex-col gap-2 w-48">
+                          <div className="flex items-center justify-between border-b border-[#242b3b] pb-1.5">
+                            <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                              Row {track.id + 1} Color
+                            </span>
+                            <button
+                              onClick={() => setColorPickerTrackId(null)}
+                              className="text-slate-400 hover:text-white p-0.5"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1.5">
+                            {LPX_PALETTE_PRESETS.map((p) => (
+                              <button
+                                key={p.paletteIndex}
+                                onClick={() => {
+                                  if (onUpdateTrack) {
+                                    onUpdateTrack(track.id, {
+                                      colorHex: p.colorHex,
+                                      colorDimHex: p.colorDimHex,
+                                      paletteIndex: p.paletteIndex,
+                                    });
+                                  }
+                                  setColorPickerTrackId(null);
+                                }}
+                                title={`${p.name} (LPX #${p.paletteIndex})`}
+                                style={{ backgroundColor: p.colorHex }}
+                                className={`w-5 h-5 rounded-full hover:scale-110 active:scale-95 transition-all ring-1 ring-white/20 ${
+                                  track.paletteIndex === p.paletteIndex ? 'ring-2 ring-white scale-110' : ''
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
           </div>
 
           {/* 8x8 Pad Grid */}

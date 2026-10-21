@@ -70,10 +70,9 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       name: 'Send A',
       shortName: 'SEND A',
       color: '#ffd000',
-      active: activePage === 0,
-      tooltip: 'Send A: Bank 1 / Page 1 (Steps 1-8)',
+      active: viewMode === 'sendA',
+      tooltip: 'Send A: 64-step melodic view for Instruments 1 to 4 (Click again to return to 8-track grid)',
       action: () => {
-        setActivePage(0);
         if (onSceneButtonAction) onSceneButtonAction(2);
       },
     },
@@ -82,10 +81,9 @@ export const SceneButtons: React.FC<SceneButtonsProps> = ({
       name: 'Send B',
       shortName: 'SEND B',
       color: '#ff9100',
-      active: activePage === 1,
-      tooltip: 'Send B: Bank 2 / Page 2 (Steps 9-16)',
+      active: viewMode === 'sendB',
+      tooltip: 'Send B: 64-step melodic view for Instruments 5 to 8 (Click again to return to 8-track grid)',
       action: () => {
-        setActivePage(1);
         if (onSceneButtonAction) onSceneButtonAction(3);
       },
     },

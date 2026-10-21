@@ -33,8 +33,8 @@ The 8 round buttons on the right edge match the official silk-screened labels of
 | :--- | :--- | :--- | :--- | :--- |
 | **VOLUME** | Row 8 (Top Right) | `CC 89` / `Note 89` | **Cycle Active Track**: Steps through Track 1 to 8 (Kick → Snare → Hat → Open Hat → Clap → Bass → Lead → Chord). | Dim Cyan standby glow |
 | **PAN** | Row 7 | `CC 79` / `Note 79` | **Cycle View Modes**: Steps through `8-Track Grid` → `64-Step Melodic` → `Euclidean Engine`. | Accent Cyan glow |
-| **SEND A** | Row 6 | `CC 69` / `Note 69` | **Bank 1 / Page 1**: Jump to steps 1–8. | Bright Yellow when Page 1 active; Dim Yellow on Page 2 |
-| **SEND B** | Row 5 | `CC 59` / `Note 59` | **Bank 2 / Page 2**: Jump to steps 9–16. | Bright Orange when Page 2 active; Dim Yellow on Page 1 |
+| **SEND A** | Row 6 | `CC 69` / `Note 69` | **4-Track Melodic (Inst 1–4)**: Toggle 64-pad view for tracks 1–4 (Kick, Snare, Closed Hat, Open Hat) with 16 steps each (2 rows per track). Press again to return to 8-track grid. | Bright Yellow when Send A active; Dim Yellow otherwise |
+| **SEND B** | Row 5 | `CC 59` / `Note 59` | **4-Track Melodic (Inst 5–8)**: Toggle 64-pad view for tracks 5–8 (Clap, Bass, Lead, Chord) with 16 steps each (2 rows per track). Press again to return to 8-track grid. | Bright Amber/Yellow when Send B active; Dim Yellow otherwise |
 | **STOP CLIP** | Row 4 | `CC 49` / `Note 49` | **Panic / All Notes Off**: Emergency silence of all voices and playback halt. | Bright Amber when running; Dark Gray when stopped |
 | **MUTE** | Row 3 | `CC 39` / `Note 39` | **Toggle Track Mute**: Mutes/unmutes the active track. | Bright Red when active track muted; Dim Red if other tracks muted; Dark Gray if none |
 | **SOLO** | Row 2 | `CC 29` / `Note 29` | **Toggle Track Solo**: Solos/un-solos the active track. | Bright Green when active track soloed; Dim Green if other tracks soloed; Dark Gray if none |

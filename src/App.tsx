@@ -103,13 +103,20 @@ export default function App() {
         activeTrackId
       );
     }
-  }, [tracks, running, activePage, activeTrackId, midiSupported, dawModeActive]);
+  }, [tracks, running, activePage, activeTrackId, midiSupported, dawModeActive, viewMode]);
+
+  const viewModeRef = useRef<ViewMode>(viewMode);
+
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+    midiManager.viewMode = viewMode;
+  }, [viewMode]);
 
   // Dedicated scene button dispatcher matching physical Launchpad X controls:
   // 0: Volume (Cycle active track selection 1..8)
   // 1: Pan (Cycle view mode: multitrack -> singletrack -> euclidean)
-  // 2: Send A (Page 1: Steps 1-8)
-  // 3: Send B (Page 2: Steps 9-16)
+  // 2: Send A (Toggle 16-Step Melodic View for Instruments 1-4 / Return to 8-Track Grid)
+  // 3: Send B (Toggle 16-Step Melodic View for Instruments 5-8 / Return to 8-Track Grid)
   // 4: Stop Clip (Silence all synth voices & stop playback)
   // 5: Mute (Toggle Mute on currently selected track)
   // 6: Solo (Toggle Solo on currently selected track)
@@ -122,11 +129,11 @@ export default function App() {
         prev === 'multitrack' ? 'singletrack' : prev === 'singletrack' ? 'euclidean' : 'multitrack'
       );
     } else if (sceneIndex === 2) {
-      setActivePageRef.current(0);
-      setActivePage(0);
+      // Send A: Toggle 4-Track Melodic View (Instruments 1-4) or back to 8-track grid
+      setViewMode((prev) => (prev === 'sendA' ? 'multitrack' : 'sendA'));
     } else if (sceneIndex === 3) {
-      setActivePageRef.current(1);
-      setActivePage(1);
+      // Send B: Toggle 4-Track Melodic View (Instruments 5-8) or back to 8-track grid
+      setViewMode((prev) => (prev === 'sendB' ? 'multitrack' : 'sendB'));
     } else if (sceneIndex === 4) {
       synth.stop();
       setRunning(false);
@@ -285,6 +292,16 @@ export default function App() {
 
             // 8x8 Grid Pads (Rows 1..8, Cols 1..8)
             if (row >= 1 && row <= 8 && col >= 1 && col <= 8) {
+              if (viewModeRef.current === 'sendA' || viewModeRef.current === 'sendB') {
+                const trackOffset = viewModeRef.current === 'sendA' ? 0 : 4;
+                const trackPair = Math.floor((8 - row) / 2);
+                const rowPart = (8 - row) % 2;
+                const trackIdx = trackOffset + trackPair;
+                const stepIdx = rowPart * 8 + (col - 1);
+                toggleStepRef.current(trackIdx, stepIdx);
+                return;
+              }
+
               const trackIdx = 8 - row;
               const stepIdx = activePageRef.current * 8 + (col - 1);
               toggleStepRef.current(trackIdx, stepIdx);

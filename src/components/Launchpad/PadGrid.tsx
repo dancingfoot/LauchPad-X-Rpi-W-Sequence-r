@@ -92,6 +92,92 @@ export const PadGrid: React.FC<PadGridProps> = ({
     );
   }
 
+  if (viewMode === 'sendA' || viewMode === 'sendB') {
+    // 4-Track 16-Step Expanded Melodic Mode (64 pads = 4 tracks x 16 steps)
+    // sendA: tracks 0..3 (Instruments 1 to 4)
+    // sendB: tracks 4..7 (Instruments 5 to 8)
+    const trackOffset = viewMode === 'sendA' ? 0 : 4;
+    const selectedTracks = tracks.slice(trackOffset, trackOffset + 4);
+
+    return (
+      <div className="grid grid-cols-8 grid-rows-8 gap-2 w-full h-full">
+        {selectedTracks.map((track) => {
+          // Each track occupies 2 rows of 8 pads = 16 steps total
+          // Row A (rowPart = 0): steps 0..7
+          // Row B (rowPart = 1): steps 8..15
+          return [0, 1].map((rowPart) => {
+            return Array.from({ length: 8 }).map((_, colIdx) => {
+              const stepIdx = rowPart * 8 + colIdx;
+              const step = track.steps[stepIdx];
+              const isPlayhead = running && (currentStep % track.length === stepIdx);
+              const isSelected = activeTrackId === track.id && selectedStepIdx === stepIdx;
+              const isActive = step?.active;
+              const isTrackMuted = track.mute;
+              const velocityRatio = step ? step.velocity / 127 : 0.8;
+              const dynamicOpacity = 0.5 + velocityRatio * 0.5;
+
+              return (
+                <button
+                  key={`${track.id}-${stepIdx}`}
+                  onClick={() => {
+                    onToggleStep(track.id, stepIdx);
+                    onSelectStep(track.id, stepIdx);
+                    if (!isActive) {
+                      onAuditionTrack(track, step?.pitch);
+                    }
+                  }}
+                  title={`${track.name} - Step ${stepIdx + 1} (${isActive ? midiToNoteName(step.pitch) : 'Off'})`}
+                  style={{
+                    backgroundColor: isTrackMuted
+                      ? '#1c1e26'
+                      : isActive
+                      ? track.colorHex
+                      : (inactivePadStyle === 'off' ? '#12141c' : track.colorDimHex),
+                    opacity: isTrackMuted ? 0.35 : dynamicOpacity,
+                    boxShadow: isActive && !isTrackMuted
+                      ? `0 0 16px ${track.colorHex}aa, inset 0 2px 4px rgba(255,255,255,0.4)`
+                      : 'inset 0 1px 2px rgba(255,255,255,0.03)',
+                    borderColor: isPlayhead
+                      ? '#ffffff'
+                      : isSelected
+                      ? '#ffffff'
+                      : '#20232d',
+                  }}
+                  className={`w-12 h-12 rounded-lg border active:scale-95 transition-all flex flex-col items-center justify-center relative cursor-pointer ${
+                    isPlayhead ? 'ring-2 ring-white ring-offset-1 ring-offset-black z-10 scale-105' : ''
+                  } ${isSelected ? 'outline outline-2 outline-white' : ''}`}
+                >
+                  <div className="flex flex-col items-center justify-center pointer-events-none">
+                    <span
+                      className={`text-[9px] font-mono font-bold leading-none ${
+                        isActive
+                          ? 'text-black font-extrabold'
+                          : inactivePadStyle === 'off'
+                          ? 'text-slate-600'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {stepIdx + 1}
+                    </span>
+                    {isActive && (
+                      <span className="text-[8px] font-mono font-bold text-black/85 leading-tight mt-0.5">
+                        {midiToNoteName(step.pitch)}
+                      </span>
+                    )}
+                  </div>
+
+                  {isActive && step.velocity > 100 && (
+                    <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
+                  )}
+                </button>
+              );
+            });
+          });
+        })}
+      </div>
+    );
+  }
+
   if (viewMode === 'euclidean') {
     // Euclidean Pattern Visualization Mode
     return (
